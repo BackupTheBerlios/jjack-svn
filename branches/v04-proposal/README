@@ -1,0 +1,64 @@
+------------------------------------------------------------------------------
+JJack 0.3 - Jack-to-Java Audio Driver and Bridge API
+Copyright (c) Jens Gulden and others.
+Distributed under the GNU Lesser General Public License (LGPL).
+This software comes with NO WARRANTY. See file LICENSE for details.
+------------------------------------------------------------------------------
+
+Quick Installation
+------------------------------------------------------------------------------
+Unpack the distribution archive and add <jjack>/lib/jjack.jar to the
+classpath. Then invoke any Java program with the additional parameter
+-Djava.library.path=<jjack>/lib/i386/Linux (according to your system).
+An audio device "JJack" will show up in the list of available Java Sound
+mixer devices.
+
+Detailed Installation
+------------------------------------------------------------------------------
+Unpack the distribution archive jjack-0.3.tar.gz to /usr/java. A directory
+/usr/java/jjack-0.3 will be created. You can also choose a different
+directory, in that case the absolute path values in the shell-scripts
+bin/jjack.sh and bin/runBeanBuilder.sh need to be adopted to your choice.
+
+The native bridge library libjjack.so (on Linux systems) needs to be 
+accessible by the Java Virtual Machine (JVM).
+There are two ways to make sure the JVM can load the native bridge library:
+- Copy the file <jjack-install-dir>/lib/<arch>/<os>/* to the system's default
+  library path. On Linux:
+  cp ./lib/i386/Linux/libjjack.so /usr/lib/
+  Alternatively create a filesystem-link to the binary file at the system's
+  default library location:
+  cd /usr/lib
+  ln -s <jjack-install-dir>/lib/i386/Linux/libjjack.so
+- Or the library-path can directly be set through the JVM system property
+  "java.library.path". Add the parameter
+  "-Djava.library.path=<jjack-install-dir>/lib/i386/Linux" to the invocation
+  command.
+
+Note: The current version includes pre-compiled binary libraries for
+i386-Linux, amd64-Linux and i386/ppc-Mac OS. To run JJack on different
+platforms, the source files libjjack.c and libjjack.h need to be compiled on
+your system. Please send a copy of the binary and a description of your
+compilation process if you succeed in running JJack on different platforms.
+
+Before using JJack, don't forget to start the JACK daemon. 
+This is either done by manually invoking jackd, or by configuring the system
+to start up jackd at boot time. There are several alternative ways to
+configure and run the daemon, see the JACK user documentation for details
+(http://www.djcj.org/LAU/jack/).
+
+Tested on
+------------------------------------------------------------------------------
+- Debian 3.0 unstable, kernel 2.4.24, jackd 0.94.0. libjack-0.80.0.so.0.0.23,
+  ALSA 1.0.2, Sun-J2SE SDK 1.4.2_03, both running jackd as root with
+  realtime-support, and as ordinary user without realtime-support.
+- Debian 3.0 testing, kernel 2.6.6, jackd 0.98.1, libjack-0.80.0.so.0.0.23,
+  ALSA 1.0.4rc2, Sun-J2SE SDK 1.4.2_04, running jackd as normal user without
+  realtime-capabilities.
+- Agnula DeMuDi 1.2, kernel 2.4.25 with multimedia/realtime patches, 
+  jackd 0.94.0, libjack-0.80.0.so.0.0.23, ALSA 1.0.6a, Sun-J2SE JRE 1.5.0,
+  running jackd as normal user without realtime-capabilities.
+- Musix 1.0 R2b1, kernel 2.6.21, jackd 0.101.1, libjack-0.100.0, ALSA 1.0.13,
+  Sun-JDK1.6.0_03-b05, running as root.s
+
+(list of files)
