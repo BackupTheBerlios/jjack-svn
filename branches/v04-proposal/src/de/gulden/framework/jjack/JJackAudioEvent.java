@@ -92,6 +92,14 @@ public class JJackAudioEvent extends EventObject {
     }
 
     /**
+     * Set the UNIX timestamp of this event.
+     * @param timestamp
+     */
+    void setTimestamp(long timestamp) {
+    	this.timestamp = timestamp;
+    }
+    
+    /**
      * Returns the mono input buffer.
      *  
      * @return  input buffer of the mono input port.

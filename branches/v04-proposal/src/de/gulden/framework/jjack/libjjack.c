@@ -3,11 +3,13 @@
  *
  * Module:   libjjack.so
  *
- * Native implementation of class de.gulden.framework.jjack.JJackSystem.
+ * Native implementation of class de.gulden.framework.jjack.JJackNativeClient.
  *
  * Author:      Jens Gulden
  * Modified by: Peter J. Salomonsen
  * Modified by: Andrew Cooke
+ * Modified by: Peter Brinkmann
+ *
  * 2006-12-17 (PJS): Changed INF pointer to long (64bit) for amd64 support
  * 2007-04-09 (PJS): No longer object allocation for each process call
  * 2007-07-10 (AC):  - The size of the sample is found using size() rather than being
@@ -15,15 +17,25 @@
  *                   - Some ints are cast to jsize which is long on 64 bit systems (see
  *                     ftp://www6.software.ibm.com/software/developer/jdk/64bitporting/64BitJavaPortingGuide.pdf)
  *                   - The allocation of inf->byteBufferArray[mode] is made outside the loop
- *                     over ports. This avoids a null pointer exception in Java when there are
- *                     zero ports (eg for output on a "consumer only" process).		
- * 
+ *                     over ports. This avoids a null pointer exception in Java when there are
+ *                     zero ports (eg for output on a "consumer only" process).
+ * 2009-03-16 (PB):  - Added support for autoconnect by name to other clients
+ * 2009-05-11 (PB):  - General refactoring
+ * 2009-05-11 (PB):  - Eliminated static field lookup; all values are
+ * now passed as function arguments
+ * 2009-05-12 (PB):  - Moved native bridge to JJackNativeClient
+ * 2009-05-13 (PB):  - Got rid of some static calls
+ * 2009-05-13 (PB):  - added shutdown callback
+ * 2009-05-19 (PB):  - support for further streamlining of Java callback
+ *
  * Possible compile commands:
  *
  * gcc -fPIC -I/usr/java/java/include -I/usr/java/java/include/linux -I/usr/include/jack -c libjjack.c
  * gcc -shared -fPIC -ljack -o libjjack.so libjjack.o
  *
  * You may need a symlink 'libjack.so' -> 'libjack0.1xx.x' inside /usr/lib.
+ *
+ * For MacOS X build, see make/build_macosx.xml.
  */
 
 #include <stdlib.h>
@@ -35,254 +47,136 @@
 #include "libjjack.h"
 
 /*
- * Maximum number of ports to be allocated. 
+ * Maximum number of ports to be allocated.
  */
 #define MAX_PORTS 64
 
 /*
- * Symbols for input, output. 
+ * Symbols for input, output.
  */
 typedef enum {
-    INPUT, 
-    OUTPUT, 
+    INPUT,
+    OUTPUT,
     MODES   /* total count */
 } MODE;
 
 /*
- * Constant strings. Some of these reflect the names of Java identifiers. 
+ * Constant strings. Some of these reflect the names of Java identifiers.
  */
 const char *CLASS_BYTEBUFFER = "java/nio/ByteBuffer";
-const char *CLASS_JJACKSYSTEM = "de/gulden/framework/jjack/JJackSystem";
 const char *CLASS_JJACKEXCEPTION = "de/gulden/framework/jjack/JJackException";
 const char *METHOD_PROCESS = "processBytes";
-const char *METHOD_PROCESS_SIG = "([Ljava/nio/ByteBuffer;[Ljava/nio/ByteBuffer;)V";
-const char *FIELD_INFPOINTER = "infPointer";
-const char *FIELD_CLIENTNAME = "clientName";
-const char *FIELD_PORTCOUNT[MODES] = { "portsInput", "portsOutput"};
-const char *FIELD_PORTAUTOCONNECT[MODES] = { "portsInputAutoconnect", "portsOutputAutoconnect"};
-const char *MODE_LABEL[MODES] = { "input", "output"};
+const char *METHOD_PROCESS_SIG = "([Ljava/nio/ByteBuffer;[Ljava/nio/ByteBuffer;Z)V";
+const char *METHOD_SHUTDOWN = "handleShutdown";
+const char *METHOD_SHUTDOWN_SIG = "()V";
+const char *MODE_LABEL[MODES] = {"input", "output"};
 const unsigned long MODE_JACK[MODES] = { JackPortIsInput, JackPortIsOutput };
 
 /*
  * Global memory to store values needed for performing the Java callback
- * from the JACK thread. A pointer to this structure is passed to the 
- * process()-function as argument 'void *arg'. Each running instance of 
- * JJackSystem allocates exactly one block of memory for this structure.
- * When Java calls native code, the pointer to this structure is taken
- * from the field 'infPointer' of class JJackSystem (a Java field holds a real
- * physical pointer there). 
+ * from the JACK thread. A pointer to this structure is passed to the
+ * process()-function as argument 'void *arg'.
 */
 typedef struct Inf {
-    JNIEnv *env;                    /* environment pointer inside JACK thread, assigned by AttachCurrentThread() */
-    JavaVM *jvm;                    /* jvm pointer */
+    jobject owner;
     jack_client_t *client;
     int portCount[MODES];
-    int portAutoconnect[MODES];     /* (boolean) */
     jack_port_t *port[MODES][MAX_PORTS];
-    jack_default_audio_sample_t *sampleBuffers[MODES][MAX_PORTS];	// Keep store of the sample buffer pointers so that we don't have to reallocate direct buffer
-    jclass cls_JJackSystem;         /* handle of class JJackSystem */
-    jclass cls_ByteBuffer;          /* handle of class java.nio.ByteBuffer */
-    jmethodID mid_process;          /* handle of method JJackSystem.process()*/
+    jack_default_audio_sample_t *sampleBuffers[MODES][MAX_PORTS];
     jobjectArray byteBufferArray[MODES];
 } *INF;
 
+JavaVM *cached_jvm;              /* jvm pointer */
+jclass cls_ByteBuffer;    /* handle of class java.nio.ByteBuffer */
+jmethodID processCallback = NULL;
+jmethodID shutdownCallback = NULL;
 
-/* ------------------------------------------------------------------------ */
-/* --- Private functions                                                    */
-/* ------------------------------------------------------------------------ */
 
 /*
- * Throw a JJackException in Java with an optional second description text. 
+ * Main JACK audio process chain callback. From here, we will branch into the
+ * Java virtual machine to let Java code perform the processing.
  */
-void throwExc2(JNIEnv *env, char *msg, char *msg2) {	
-    jclass clsExc = (*env)->FindClass(env, CLASS_JJACKEXCEPTION);	
+int process(jack_nframes_t nframes, void *arg) {
+  INF inf = arg;
+  JNIEnv *env;
+  int mode, i;
+  jboolean reallocated = JNI_FALSE;
+
+  if ((*cached_jvm)->AttachCurrentThreadAsDaemon(cached_jvm,
+                                (void**) &env, NULL)) {
+    fprintf(stderr, "FATAL: cannot attach JACK thread to JVM\n");
+    return -1;
+  }
+
+  for(mode=INPUT; mode<=OUTPUT; mode++) {
+    for(i=0; i<inf->portCount[mode]; i++) {
+      // Only reallocate if the buffer position changes
+      jack_default_audio_sample_t *tempSampleBuffer =
+            (jack_default_audio_sample_t *)
+                  jack_port_get_buffer(inf->port[mode][i], nframes);
+      if (tempSampleBuffer!=inf->sampleBuffers[mode][i]) {
+        reallocated = JNI_TRUE;
+        inf->sampleBuffers[mode][i] = tempSampleBuffer;
+        jobject byteBuffer = (*env)->NewDirectByteBuffer(env,
+                  tempSampleBuffer,
+                    (jsize)(nframes*sizeof(jack_default_audio_sample_t)));
+        (*env)->SetObjectArrayElement(env, inf->byteBufferArray[mode],
+                  (jsize) i, byteBuffer);
+      }
+    }
+  }
+
+  (*env)->CallVoidMethod(env, inf->owner, processCallback,
+      inf->byteBufferArray[INPUT], inf->byteBufferArray[OUTPUT], reallocated);
+
+  return 0;
+}
+
+/*
+ * Shutdown callback to let Java know if the client gets zombified.
+ */
+void shutdown(void *arg) {
+  INF inf = (INF) arg;
+  JNIEnv *env;
+
+  if ((*cached_jvm)->AttachCurrentThread(cached_jvm, (void**) &env, NULL)) {
+    return;
+  }
+
+  (*env)->CallVoidMethod(env, inf->owner, shutdownCallback);
+
+  (*cached_jvm)->DetachCurrentThread(cached_jvm);
+}
+
+/*
+ * Throw a JJackException in Java with an optional second description text.
+ */
+void throwExc2(JNIEnv *env, char *msg, char *msg2) {
+    jclass clsExc = (*env)->FindClass(env, CLASS_JJACKEXCEPTION);
     char m[255] = "";
     if (msg != NULL) {
         strcat(m, msg);
     }
     if (msg2 != NULL) { /* optional second string */
+        strcat(m, " ");
         strcat(m, msg2);
     }
     if (clsExc == 0) {
-        printf("fatal: cannot access class JJackException.\nerror:\n%s\n", m);
+        fprintf(stderr, "fatal: cannot access class JJackException.\nerror:\n%s\n", m);
     } else {
         (*env)->ThrowNew(env, clsExc, m);
     }
-}	
+}
 
 /*
- * Throw a JJackException in Java with a description text. 
+ * Throw a JJackException in Java with a description text.
  */
-void throwExc(JNIEnv *env, char *msg) {	
+void throwExc(JNIEnv *env, char *msg) {
     throwExc2(env, msg, NULL);
 }
 
 /*
- * Get the value of an integer-field of an object instance. 
- */
-jint getIntField(JNIEnv *env, jobject obj, char *name) {
-    jclass cls = (*env)->GetObjectClass(env, obj);
-    jfieldID fid = (*env)->GetFieldID(env, cls, name, "I");
-    jint i;
-    if (fid == 0) {
-        throwExc2(env, "cannot access int field: ", name);
-        return -1;
-    }
-    i = (*env)->GetIntField(env, obj, fid);
-    return i;
-}
-
-/*
- * Set the value of an integer-field of an object instance. 
- */
-void setIntField(JNIEnv *env, jobject obj, char *name, jint val) {
-    jclass cls = (*env)->GetObjectClass(env, obj);
-    jfieldID fid = (*env)->GetFieldID(env, cls, name, "I");
-    if (fid == 0) return throwExc2(env, "cannot access int field: ", name);
-    (*env)->SetIntField(env, obj, fid, val);
-}
-
-/* 
- * Get the value of a long-field of an object instance. 
- */
-jint getLongField(JNIEnv *env, jobject obj, char *name) {
-    jclass cls = (*env)->GetObjectClass(env, obj);
-    jfieldID fid = (*env)->GetFieldID(env, cls, name, "J");
-    jlong l;
-    if (fid == 0) {
-        throwExc2(env, "cannot access long field: ", name);
-        return -1;
-    }
-    l = (*env)->GetLongField(env, obj, fid);
-    return l;
-}
-
-/* 
- * Set the value of a long-field of an object instance. 
- */
-void setLongField(JNIEnv *env, jobject obj, char *name, jlong val) {
-    jclass cls = (*env)->GetObjectClass(env, obj);
-    jfieldID fid = (*env)->GetFieldID(env, cls, name, "J");
-    if (fid == 0) return throwExc2(env, "cannot access long field: ", name);
-    (*env)->SetLongField(env, obj, fid, val);
-}
-
-/*
- * Get the value of a boolean-field of an object instance.
- */
-jboolean getBooleanField(JNIEnv *env, jobject obj, char *name) {
-    jclass cls = (*env)->GetObjectClass(env, obj);
-    jfieldID fid = (*env)->GetFieldID(env, cls, name, "Z");
-    jboolean b;
-    if (fid == 0) {
-        throwExc2(env, "cannot access boolean field: ", name);
-        return -1;
-    }
-    b = (*env)->GetBooleanField(env, obj, fid);
-    return b;
-}
-
-/*
- * Set the value of a boolean-field of an object instance.
- */
-void setBooleanField(JNIEnv *env, jobject obj, char *name, jboolean val) {
-    jclass cls = (*env)->GetObjectClass(env, obj);
-    jfieldID fid = (*env)->GetFieldID(env, cls, name, "Z");
-    if (fid == 0) return throwExc2(env, "cannot access boolean field: ", name);
-    (*env)->SetBooleanField(env, obj, fid, val);
-}
-
-/*
- * Get the value of a String-field of an object instance.
- */
-jstring getStringField(JNIEnv *env, jobject obj, char *name) {
-    jclass cls = (*env)->GetObjectClass(env, obj);
-    jfieldID fid = (*env)->GetFieldID(env, cls, name, "Ljava/lang/String;");
-    jstring js;
-    if (fid == 0) {
-        throwExc2(env, "cannot access string field: ", name);
-        return NULL;
-    }
-    js = (*env)->GetObjectField(env, obj, fid);
-    return js;
-}
-
-/*
- * Get the value of a static integer-field of a class. 
- */
-jint getStaticIntField(JNIEnv *env, jclass cls, char *name) {
-    jfieldID fid = (*env)->GetStaticFieldID(env, cls, name, "I");
-    jint i;
-    if (fid == 0) {
-        throwExc2(env, "cannot access int field: ", name);
-        return -1;
-    }
-    i = (*env)->GetStaticIntField(env, cls, fid);
-    return i;
-}
-
-/*
- * Set the value of a static integer-field of a class. 
- */
-void setStaticIntField(JNIEnv *env, jclass cls, char *name, jint val) {
-    jfieldID fid = (*env)->GetStaticFieldID(env, cls, name, "I");
-    if (fid == 0) return throwExc2(env, "cannot access int field: ", name);
-    (*env)->SetStaticIntField(env, cls, fid, val);
-}
-
-/*
- * Get the value of a static long-field of a class. 
- */
-jlong getStaticLongField(JNIEnv *env, jclass cls, char *name) {
-    jfieldID fid = (*env)->GetStaticFieldID(env, cls, name, "J");
-    jlong i;
-    if (fid == 0) {
-        throwExc2(env, "cannot access int field: ", name);
-        return -1;
-    }
-    i = (*env)->GetStaticLongField(env, cls, fid);
-    return i;
-}
-
-/*
- * Set the value of a static long-field of a class. 
- */
-void setStaticLongField(JNIEnv *env, jclass cls, char *name, jlong val) {
-    jfieldID fid = (*env)->GetStaticFieldID(env, cls, name, "J");
-    if (fid == 0) return throwExc2(env, "cannot set long field: ", name);
-    (*env)->SetStaticLongField(env, cls, fid, val);
-}
-
-/*
- * Get the value of a static boolean-field of a class.
- */
-jint getStaticBooleanField(JNIEnv *env, jclass cls, char *name) {
-    jfieldID fid = (*env)->GetStaticFieldID(env, cls, name, "Z");
-    jboolean b;
-    if (fid == 0) {
-        throwExc2(env, "cannot access static boolean field: ", name);
-        return -1;
-    }
-    b = (*env)->GetStaticBooleanField(env, cls, fid);
-    return b;
-}
-
-/*
- * Get the value of a static String-field of a class.
- */
-jstring getStaticStringField(JNIEnv *env, jclass cls, char *name) {
-    jfieldID fid = (*env)->GetStaticFieldID(env, cls, name, "Ljava/lang/String;");
-    jstring js;
-    if (fid == 0) {
-        throwExc2(env, "cannot access string field: ", name);
-        return NULL;
-    }
-    js = (*env)->GetStaticObjectField(env, cls, fid);
-    return js;
-}
-
-/*
- * Allocate string memory. 
+ * Allocate string memory.
  */
 const char *allocchars(JNIEnv *env, jstring js) {
     return (*env)->GetStringUTFChars(env, js, 0);
@@ -296,221 +190,219 @@ void freechars(JNIEnv *env, jstring js, const char *s) {
 }
 
 /*
- * Get pointer to Inf-struct from 'infPointer'-field of class JJackSystem. 
+ * Get env pointer for current thread.
  */
-INF getInf(JNIEnv *env, jclass cls) {	
-    INF inf = (INF) getStaticLongField(env, cls, FIELD_INFPOINTER);
-    return inf;
+int getEnv(JNIEnv **envPtr) {
+  return (*cached_jvm)->GetEnv(cached_jvm, (void**) envPtr, JNI_VERSION_1_4);
 }
 
-/* ------------------------------------------------------------------------- */
-/* --- Callback handlers                                                     */
-/* ------------------------------------------------------------------------- */
-
-/* 
- * Main JACK audio process chain callback. From here, we will branch into the
- * Java virtual machine to let Java code perform the processing.
+/*
+ * Init function, implicitly called by JVM.
  */
-int process(jack_nframes_t nframes, void *arg) {
-    INF inf = arg;
-    JNIEnv *env;
-    JavaVM *jvm = inf->jvm;
-    jobject byteBuffer;
-    jobjectArray byteBufferArray[MODES];
-    int err;
-    int mode, i;
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *jvm, void *reserved) {
+  JNIEnv *env;
 
-    /* attach to JVM, if not yet done */
-    if (inf->env == NULL) {
-        err = (*jvm)->AttachCurrentThread(jvm, &inf->env, NULL); /* writes env-pointer into inf->env */
-        if (err != 0) {
-            printf("FATAL: cannot attach JACK thread to JVM\n");
+  cached_jvm = jvm;
+
+  if (getEnv(&env)) {
+    return JNI_ERR;
+  }
+
+  jobject obj = (*env)->FindClass(env, CLASS_BYTEBUFFER);
+  if (obj == NULL) {
+    return JNI_ERR;
+  }
+  cls_ByteBuffer = (*env)->NewWeakGlobalRef(env, obj);
+
+  return JNI_VERSION_1_4;
+}
+
+/*
+ * Shutdown function, implicitly called by JVM.
+ */
+JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *jvm, void *reserved) {
+  JNIEnv *env;
+  if (getEnv(&env)) {
+    return;
+  }
+  (*env)->DeleteWeakGlobalRef(env, cls_ByteBuffer);
+}
+
+
+/*
+ * private native long openClient(String, int, int) throws JJackException
+ */
+JNIEXPORT jlong JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_openClient(JNIEnv *env, jobject obj, jstring clientName, jint portsIn, jint portsOut) {
+  INF inf = (INF) malloc(sizeof(struct Inf));
+  const char *name;
+  jack_client_t *client;
+  char *portName;
+  int mode, i;
+
+  if (processCallback==NULL) { // first call?
+    jclass cls = (*env)->GetObjectClass(env, obj);
+    jmethodID mid = (*env)->GetMethodID(env, cls,
+              METHOD_PROCESS, METHOD_PROCESS_SIG);
+    if (mid==NULL) {
+      throwExc2(env, "method not found", METHOD_PROCESS);
+      return 0;
+    }
+    processCallback = mid;  // no global ref necessary
+
+    mid = (*env)->GetMethodID(env, cls,
+              METHOD_SHUTDOWN, METHOD_SHUTDOWN_SIG);
+    if (mid==NULL) {
+      throwExc2(env, "method not found", METHOD_SHUTDOWN);
+      return 0;
+    }
+    shutdownCallback = mid;  // no global ref necessary
+  }
+
+  inf->owner = (*env)->NewWeakGlobalRef(env, obj);
+
+  name = allocchars(env, clientName);
+  fprintf(stderr, "natively opening jack client \"%s\"\n", name);
+
+  client = jack_client_open(name, JackNullOption, NULL);
+  freechars(env, clientName, name);
+  if (client==0) {
+    throwExc(env, "can't open client, jack server not running?");
+    return 0;
+  }
+  inf->client = client;
+
+  jack_set_process_callback(client, process, inf);
+  jack_on_shutdown(client, shutdown, inf);
+
+  portName = malloc(100);
+  for (mode=INPUT; mode<=OUTPUT; mode++) {
+    int portCount = (mode==INPUT) ? portsIn : portsOut;
+    if (portCount > MAX_PORTS) {
+      portCount = MAX_PORTS;
+    }
+    inf->portCount[mode] = portCount;
+
+    inf->byteBufferArray[mode] = (*env)->NewGlobalRef(env,
+                (*env)->NewObjectArray(env,
+                    (jsize)inf->portCount[mode], cls_ByteBuffer, NULL));
+    for (i=0; i<inf->portCount[mode]; i++) {
+      sprintf(portName, "%s_%i", MODE_LABEL[mode], (i+1));
+      inf->port[mode][i] = jack_port_register(client, portName,
+                  JACK_DEFAULT_AUDIO_TYPE, MODE_JACK[mode], 0);
+      inf->sampleBuffers[mode][i] = NULL;
+    }
+  }
+  free(portName);
+  fprintf(stderr, "using %i input ports, %i output ports\n",
+                      inf->portCount[INPUT], inf->portCount[OUTPUT]);
+
+  return (jlong) inf;
+}
+
+/*
+ * private void startClient(String, String) throws JJackException
+ *
+ * sourceTarget==null: no autoconnect
+ * sourceTarget=="":   autoconnect to physical ports
+ * sourceTarget==name: autoconnect to ports of named client
+ */
+JNIEXPORT void JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_startClient(JNIEnv *env, jobject obj, jlong infPtr, jstring sourceTarget, jstring sinkTarget) {
+  INF inf = (INF) infPtr;
+  const char **ports;
+  int mode, i;
+
+  if (jack_activate(inf->client)) {
+    throwExc(env, "cannot activate client");
+    return;
+  }
+
+  /* autoconnect ports if requested (can't do this before client is activated)*/
+  for (mode=INPUT; mode<=OUTPUT; mode++) {
+    jstring target = (mode==INPUT) ? sourceTarget : sinkTarget;
+    if (target!=NULL) {
+      char *targetPort = allocchars(env, target);
+      int portFlags = (*targetPort) ? 0 : JackPortIsPhysical;
+      fprintf(stderr, "autoconnecting %s ports\n", MODE_LABEL[mode]);
+      if ((ports = jack_get_ports(inf->client, targetPort,
+              NULL, portFlags|MODE_JACK[ 1 - mode ])) == NULL) {
+          /* (1-mode as we connect outputs to inputs and inputs to outputs) */
+        throwExc2(env, "Cannot find ports to autoconnect to", MODE_LABEL[mode]);
+        return;
+      }
+      freechars(env, target, targetPort);
+
+      for (i=0; i<inf->portCount[mode]; i++) {
+        fprintf(stderr, "%s %i\n", MODE_LABEL[mode], (i+1));
+        /* will fail if more ports are requested than available */
+        if (mode==INPUT) {
+          if (jack_connect(inf->client, ports[i],
+              jack_port_name(inf->port[mode][i]))) {
+            throwExc(env, "cannot autoconnect input port");
             return;
+          }
+        } else { // mode == OUTPUT
+          if (jack_connect(inf->client,
+                    jack_port_name(inf->port[mode][i]), ports[i])) {
+            throwExc(env, "cannot autoconnect output port");
+            return;
+          }
         }
-        env = inf->env;
-        /* get handle to class ByteBuffer */
-        inf->cls_ByteBuffer = (*env)->FindClass(env, CLASS_BYTEBUFFER);	
-        if (inf->cls_ByteBuffer == NULL) {
-            throwExc(env, "cannot access class java.nio.ByteBuffer");
-            return 0;
-        }
-        /* get handle to class JJackSystem */
-        inf->cls_JJackSystem = (*env)->FindClass(env, CLASS_JJACKSYSTEM);	
-        if (inf->cls_JJackSystem == NULL) {
-            throwExc(env, "cannot access class de.gulden.framework.jjack.JJackSystem");
-            return 0;
-        }
-        /* get handle to method JJackSystem.process(...) */	
-        inf->mid_process = (*env)->GetStaticMethodID(env, inf->cls_JJackSystem, METHOD_PROCESS, METHOD_PROCESS_SIG);
-        if (inf->mid_process == NULL) {
-            throwExc(env, "cannot access method JJackSystem.process(...)");
-            return 0;
-        }
-    } else { /* has been attached to the JVM before, inf->env is valid */
-        env = inf->env;
+      }
+      free (ports);
     }
-    
-    /* allocate DirectByteBuffer objects */
-    for (mode=INPUT; mode<=OUTPUT; mode++) {
-		if(inf->byteBufferArray[mode]==0)
-           	inf->byteBufferArray[mode] = (*env)->NewObjectArray(env, (jsize)inf->portCount[mode], inf->cls_ByteBuffer, NULL);
-       	for (i=0; i < inf->portCount[mode]; i++) {
-		    // Only reallocate if the buffer position changes
-			jack_default_audio_sample_t *tempSampleBuffer = (jack_default_audio_sample_t *) jack_port_get_buffer(inf->port[mode][i], nframes);
-			
-			if(tempSampleBuffer!=inf->sampleBuffers[mode][i])
-			{
-				inf->sampleBuffers[mode][i] = tempSampleBuffer;
-        		jobject byteBuffer = (*env)->NewDirectByteBuffer(env, inf->sampleBuffers[mode][i], (jsize)(nframes*sizeof(jack_default_audio_sample_t)));
-            	(*env)->SetObjectArrayElement(env, inf->byteBufferArray[mode], (jsize)i, byteBuffer);
-			}
-        }
-    }
-
-    /* callback to Java */
-    (*env)->CallStaticVoidMethod(env, inf->cls_JJackSystem, inf->mid_process, inf->byteBufferArray[INPUT], inf->byteBufferArray[OUTPUT]);
-    
-    /* (no detach from JVM , thread remains attached): (*jvm)->DetachCurrentThread(jvm); */
-
-    return 0;      
-}
-
-
-/* ------------------------------------------------------------------------ */
-/* --- Implementations of natively declared Java methods                    */
-/* ------------------------------------------------------------------------ */
-
-/*
- * private static native void nativeInit() throws JJackException
- */
-JNIEXPORT void JNICALL Java_de_gulden_framework_jjack_JJackSystem_nativeInit(JNIEnv *env, jclass cls) {
-    INF inf;
-    jstring namej;
-    jint ports[MODES];
-    const char *name;
-    jack_client_t *client;
-    int portCount;
-    int portAutoconnect; /* boolean */
-    char *portName;
-    int mode, i;
-	
-    /* allocate memory for inf-structure */
-    inf = (INF) malloc(sizeof(struct Inf));
-	
-    /* save pointer into java object */
-    setStaticLongField(env, cls, FIELD_INFPOINTER, (jlong)inf);
-	
-    /* handle to JNI environment */
-    inf->env = NULL;  /* initialize with NULL to mark that JACK thread needs to call AttachCurrentThread when first time inside process-callback-function */
-	
-    /* handle to JavaVM */
-    (*env)->GetJavaVM(env, &inf->jvm);    
-
-    /* register Jack client */
-    namej = getStaticStringField(env, cls, FIELD_CLIENTNAME);
-    name = allocchars(env, namej);
-	
-    printf("natively registering jack client \"%s\"\n", name);
-	
-    client = jack_client_new(name);
-    freechars(env, namej, name);
-    if (client == 0) {
-        return throwExc(env, "cannot register jack client, jack server not running?");
-    }
-    inf->client = client;
-
-    /* register ports */
-    for (mode=INPUT; mode<=OUTPUT; mode++) {
-        portCount = getStaticIntField(env, cls, FIELD_PORTCOUNT[mode]);
-        portAutoconnect = getStaticBooleanField(env, cls, FIELD_PORTAUTOCONNECT[mode]);
-        if (portCount > MAX_PORTS) { /* limit to max */
-            portCount = MAX_PORTS;
-        }
-        inf->portCount[mode] = portCount;
-        inf->portAutoconnect[mode] = portAutoconnect;
-    }	
-	
-    printf("using %i input ports, %i output ports\n", inf->portCount[INPUT], inf->portCount[OUTPUT]);
-	
-    portName = malloc(100);
-    for (mode=INPUT; mode<=OUTPUT; mode++) {
-        inf->byteBufferArray[mode] = 0;
-        for (i=0; i < inf->portCount[mode]; i++) {
-            sprintf(portName, "%s_%i", MODE_LABEL[mode], (i+1));
-            inf->port[mode][i] = jack_port_register(client, portName, JACK_DEFAULT_AUDIO_TYPE, MODE_JACK[mode], 0);
-        }
-    }
-    free(portName);
-
-    /* set callback functions */
-    jack_set_process_callback(client, process, inf);
-    /*jack_on_shutdown(client, callbackShutdown, callbackArg);*/
+  }
 }
 
 /*
- * private static native void nativeStart() throws JJackException
+ * private void closeClient(long)
  */
-JNIEXPORT void JNICALL Java_de_gulden_framework_jjack_JJackSystem_nativeStart(JNIEnv *env, jclass cls) {
-    INF inf = getInf(env, cls);
-    const char **ports;
-    const char *msg[128];
-    int min;
-    int mode, i;
-
-    /* activate jack client */
-    if (jack_activate(inf->client)) {
-        return throwExc(env, "cannot activate client");
-    }
-
-    /* autoconnect ports if requested (can't do this before the client is activated)*/
-    for (mode=INPUT; mode<=OUTPUT; mode++) {
-        if (inf->portAutoconnect[mode]) {
-            printf("autoconnecting %s ports\n", MODE_LABEL[mode]);
-            if ((ports = jack_get_ports(inf->client, NULL, NULL, JackPortIsPhysical|MODE_JACK[ 1 - mode ])) == NULL) { /* (1-mode as we connect outputs to inputs and inputs to outputs) */
-                return throwExc2(env, "Cannot find any physical ports to autoconnect ", MODE_LABEL[mode]);
-            }
-            for (i=0; i < inf->portCount[mode]; i++) {
-                printf("%s %i\n", MODE_LABEL[mode], (i+1));
-                /* will fail if more ports are requested than available (as returned by jack_get_ports) */
-                if ( mode == INPUT ) {
-                    if (jack_connect(inf->client, ports[i], jack_port_name(inf->port[mode][i]))) {
-                        return throwExc(env, "cannot autoconnect input port");
-                    }
-                } else { // mode == OUTPUT
-                    if (jack_connect(inf->client, jack_port_name(inf->port[mode][i]), ports[i])) {
-                        return throwExc(env, "cannot autoconnect output port");
-                    }
-                }
-            }
-            free (ports);
-        }
-    }
-}
-
-/*
- * private static native void nativeDestroy() throws JJackException
- */
-JNIEXPORT void JNICALL Java_de_gulden_framework_jjack_JJackSystem_nativeDestroy(JNIEnv *env, jclass cls) {
-    INF inf = getInf(env, cls);
+JNIEXPORT void JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_closeClient(JNIEnv *env, jobject obj, jlong infPtr) {
+  INF inf = (INF) infPtr;
+  if (inf!=0 && inf->client!=NULL) {
     jack_client_close(inf->client);
-    free(inf);
+    (*env)->DeleteGlobalRef(env, inf->byteBufferArray[INPUT]);
+    (*env)->DeleteGlobalRef(env, inf->byteBufferArray[OUTPUT]);
+    (*env)->DeleteWeakGlobalRef(env, inf->owner);
+  }
+  free(inf);
 }
 
 /*
- * public static native int getSampleRate()
+ * private static native int getMaxPorts()
  */
-JNIEXPORT jint JNICALL Java_de_gulden_framework_jjack_JJackSystem_getSampleRate(JNIEnv *env, jclass cls) {
-    INF inf = getInf(env, cls);
-    return jack_get_sample_rate(inf->client);
+JNIEXPORT jint JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_getMaxPorts(JNIEnv *env, jclass cls) {
+  return (jint) MAX_PORTS;
 }
 
 /*
- * Class:     de_gulden_framework_jjack_JJackSystem
- * Method:    getBufferSize
- * Signature: ()V
+ * public static native int getSampleRate() throw JJackException
  */
-JNIEXPORT jint JNICALL Java_de_gulden_framework_jjack_JJackSystem_getBufferSize
-(JNIEnv *env, jclass cls) {
-    INF inf = getInf(env, cls);
-    return jack_get_buffer_size(inf->client);
+JNIEXPORT jint JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_getSampleRate(JNIEnv *env, jclass cls) {
+  jack_client_t *client = jack_client_open("JJack auxiliary client",
+            JackNoStartServer, NULL);
+  if (client!=NULL) {
+    jint sampleRate = jack_get_sample_rate(client);
+    jack_client_close(client);
+    return sampleRate;
+  } else {
+    throwExc(env, "unable to open client; jack not running?");
+    return 0;
+  }
 }
+
+/*
+ * public static native int getBufferSize() throw JJackException
+ */
+JNIEXPORT jint JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_getBufferSize(JNIEnv *env, jclass cls) {
+  jack_client_t *client = jack_client_open("JJack auxiliary client",
+            JackNoStartServer, NULL);
+  if (client!=NULL) {
+    jint bufSize = jack_get_buffer_size(client);
+    jack_client_close(client);
+    return bufSize;
+  } else {
+    throwExc(env, "unable to open client; jack not running?");
+    return 0;
+  }
+}
+

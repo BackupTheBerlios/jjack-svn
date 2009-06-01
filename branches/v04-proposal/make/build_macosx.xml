@@ -93,7 +93,7 @@
   <target name="javah" depends="init">
     <!-- the javah ant task appears to be buggy under Ant1.5/j2sdk1.4.1/Linux, so call as executable -->
     <!--<javah class="de.gulden.framework.jjack.JJackSystem" outputFile="de/gulden/framework/jjack/libjjack.h"/>-->
-    <exec executable="${JAVA_HOME}/bin/javah" dir="." failonerror="yes">
+    <exec executable="/usr/bin/javah" dir="." failonerror="yes">
       <arg value="-classpath"/>
       <arg value="classes"/>
       <arg value="-o"/>
@@ -107,25 +107,23 @@
     Compile libjjack.
     This is the native bridge library implementing the native methods
     declared by class de.gulden.framework.jjack.JJackNativeClient.
-    *** The configuration below is running on Linux with gcc 2.95.4,
+    *** The configuration below is running on Mac OS X with gcc 4.0.1
     *** other environments have not been tested.
   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
   <target name="gcc" depends="init, javah">
-    <mkdir dir="lib/${os.arch}/${os.name}"/>
+    <mkdir dir="lib/macos"/>
     <exec executable="gcc" dir="src/de/gulden/framework/jjack" failonerror="yes">
-      <arg value="-fPIC"/>
-      <arg value="-I${JAVA_HOME}/include"/>
-      <arg value="-I${JAVA_HOME}/include/linux"/>
-      <arg value="-I/usr/include/jack"/>
+      <arg value="-I/System/Library/Frameworks/JavaVM.framework/Versions/1.5.0/Headers"/>
+      <arg value="-I/usr/local/include/jack"/>
       <arg value="-c"/>
       <arg value="libjjack.c"/>
     </exec>
     <exec executable="gcc" dir="src/de/gulden/framework/jjack" failonerror="yes">
-      <arg value="-shared"/>
-      <arg value="-fPIC"/>
+      <arg value="-dynamiclib"/>
       <arg value="-ljack"/>
+      <arg value="-L/usr/local/lib"/>
       <arg value="-o"/>
-      <arg value="../../../../../lib/${os.arch}/${os.name}/libjjack.so"/>
+      <arg value="../../../../../lib/macos/libjjack.dylib"/>
       <arg value="libjjack.o"/>
     </exec>
   </target>
@@ -145,6 +143,7 @@
       <fileset dir="classes" includes="de/gulden/application/jjack/res/*.png"/>
       <fileset dir="classes" includes="JJack.class"/>
       <fileset dir="classes" includes="JJackSystem.class"/>
+      <fileset dir="classes" includes="JJackNativeClient.class"/>
       <fileset dir="classes" includes="de/gulden/util/Toolbox.class"/>
       <fileset dir="src" includes="META-INF/services/*" />
     	<manifest>
