@@ -1,0 +1,13 @@
+###HEAD###
+
+<p>
+  In addition to the auto-generated Javadoc API documentation, the UML
+  class diagram provides a complete overview of the JJack classes and
+  their relationships (click to enlarge):
+</p>
+
+<div class='jjack_diagram'>
+  <a href="../uml/jjack.png" target="_blank"><img height="430" width="800" alt="UML class diagram" src="../uml/jjack.png"/></a>
+</div>
+
+###FOOT###

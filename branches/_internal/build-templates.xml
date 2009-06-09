@@ -1,0 +1,178 @@
+<!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ANT build script for a JJack distribution archive.
+    
+    Builds the static JJack website and the readme-file from simple
+    string-replacement templates.
+   
+    Environment: ANT 1.5.
+    Other configurations may or may not work.
+   
+    Copyright (c) Jens Gulden 2004-2007
+    Licensed under the GNU Lesser General Public License (LGPL).
+    This comes with NO WARRANTY, see file License.txt.
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+
+<project name="jjack-templates" default="all" basedir=".">
+
+  <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    Main target to build everything.
+  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+  <target name="all" depends="doc">
+    <echo message="Website and readme-file have been built."/>
+  </target>
+
+
+  <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    Initialize global properties.
+  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+  <target name="init">
+
+  	<!-- testing only, otherwise properties are passed via inheritAll=true -->
+    <property name="VERSION"  value="0.3"/>
+    <property name="VERSION_NAME"  value="0_3"/>
+    <property name="DISTRIBUTION_FILE" location="distribution/jjack-${VERSION_NAME}.tgz"/>
+    <property name="DISTRIBUTION_FILE_SIZE" value="5.1"/>
+    	
+    <property name="TEMPLATES"  value="templates"/>
+    <property name="WWW"  value="www"/>
+    <property name="README_LIST_OF_FILES_TOKEN"  value="(list of files)"/>
+    <property name="README_LIST_OF_FILES_HEADLINE"  value="Files in the distribution archive
+    	
+---------------------------------
+(list of files)"/>
+    <property name="JAVA_HOME"  location="/usr/java/java"/>
+    <property name="TMP"  location="/tmp"/>
+    <condition property="NO_ARCHIVE_YET">
+      <not>
+        <available file="${DISTRIBUTION_FILE}"/>
+      </not>
+    </condition>
+  </target>
+
+  <target name="dummyarchive" if="NO_ARCHIVE_YET">
+    <tar destfile="${DISTRIBUTION_FILE}" compression="gzip">
+      <tarfileset dir="." prefix="jjack-${VERSION_NAME}">
+        <include name="../bin/**"/>
+      </tarfileset>     
+    </tar>
+  </target>
+
+  <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    Make documentation.
+  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+  <target name="doc" depends="init, dummyarchive">
+    <!-- 
+      uses previously generated distribution archive to generate html description,
+      i.e. build-distribution script must at least be run twice in order to work properly,
+      with a dummy archive as DISTRIBUTION_FILE in the first run (e.g. an
+      earlier version)
+      This is not very clean, but this is only an internal build script.
+    -->
+    <delete dir="${TMP}/archive" failonerror="false"/>
+    <mkdir dir="${TMP}/archive"/>
+    <!--touch file="${DISTRIBUTION_FILE}"/--> <!-- make sure at least an empty archive is there in the very first run-->
+    <untar src="${DISTRIBUTION_FILE}" dest="${TMP}/archive" compression="gzip"/>
+    <java classpath="util" classname="treemaker">
+      <arg value="-s"/>
+      <arg value="filesystem"/>
+      <arg value="-t"/>
+      <arg value="html"/>
+      <arg value="-c"/>
+      <arg value="archive-files-comments.properties"/>
+      <arg value="-img"/>
+      <arg value="img/tree"/>
+      <arg value="-i"/>
+      <arg value="${TMP}/archive/jjack-${VERSION_NAME}"/>
+      <arg value="-o"/>
+      <arg value="${TMP}/tree.html"/>
+      <arg value="-Xnoroot"/>
+    </java>
+    <java classpath="util" classname="treemaker">
+      <arg value="-s"/>
+      <arg value="filesystem"/>
+      <arg value="-t"/>
+      <arg value="ascii"/>
+      <arg value="-c"/>
+      <arg value="archive-files-comments.properties"/>
+      <arg value="-openall"/>
+      <arg value="-v"/>
+      <arg value="-columns"/>
+      <arg value="50"/>
+      <arg value="-i"/>
+      <arg value="${TMP}/archive/jjack-${VERSION_NAME}"/>
+      <arg value="-o"/>
+      <arg value="${TMP}/tree.txt"/>
+      <arg value="-Xnoroot"/>
+    </java>
+    	
+    <loadfile property="tree" srcFile="${TMP}/tree.html"/>
+    <loadfile property="head" srcFile="${TEMPLATES}/_head.html.template"/>
+    <loadfile property="foot" srcFile="${TEMPLATES}/_foot.html.template"/>
+    <loadfile property="treeascii" srcFile="${TMP}/tree.txt"/>
+    <loadfile property="treeasciiheadline" srcFile="archive-files-headline.txt"/>
+  	
+  	
+    <copy file="${TEMPLATES}/examples.html.template" tofile="${WWW}/examples.html" overwrite="true"/>  	
+    <replace file="${WWW}/examples.html" token="###HEAD###" value="${head}"/>
+    <replace file="${WWW}/examples.html" token="###FOOT###" value="${foot}"/>
+    <replace file="${WWW}/examples.html" token="###TITLE###" value="Examples"/>
+    <replace file="${WWW}/examples.html" token="###VERSION###" value="${VERSION}"/>
+    <replace file="${WWW}/examples.html" token="&lt;!--examples_on" value="-->"/>
+    <replace file="${WWW}/examples.html" token="examples_off-->" value=""/>
+
+    <copy file="${TEMPLATES}/documentation.html.template" tofile="${WWW}/documentation.html" overwrite="true"/>  	
+    <replace file="${WWW}/documentation.html" token="###HEAD###" value="${head}"/>
+    <replace file="${WWW}/documentation.html" token="###FOOT###" value="${foot}"/>
+    <replace file="${WWW}/documentation.html" token="###TITLE###" value="Documentation"/>
+    <replace file="${WWW}/documentation.html" token="###VERSION###" value="${VERSION}"/>
+    <replace file="${WWW}/documentation.html" token="&lt;!--documentation_on" value="-->"/>
+    <replace file="${WWW}/documentation.html" token="documentation_off-->" value=""/>
+
+    <copy file="${TEMPLATES}/download.html.template" tofile="${WWW}/download.html" overwrite="true"/>  	
+    <replace file="${WWW}/download.html" token="###HEAD###" value="${head}"/>
+    <replace file="${WWW}/download.html" token="###FOOT###" value="${foot}"/>
+    <replace file="${WWW}/download.html" token="###TITLE###" value="Download"/>
+    <replace file="${WWW}/download.html" token="###VERSION###" value="${VERSION}"/>
+    <replace file="${WWW}/download.html" token="###ARCHIVE_CONTENTS###" value="${tree}"/>
+    <replace file="${WWW}/download.html" token="###ARCHIVE_NAME###" value="${VERSION_NAME}"/>
+    <replace file="${WWW}/download.html" token="###ARCHIVE_VERSION###" value="${VERSION_NAME}"/>
+    <replace file="${WWW}/download.html" token="###ARCHIVE_SIZE###" value="${DISTRIBUTION_FILE_SIZE}"/>
+    <replace file="${WWW}/download.html" token="download_off-->" value=""/>
+    <replace file="${WWW}/download.html" token="--download_on" value="-- -->"/>
+
+    <copy file="${TEMPLATES}/faq.html.template" tofile="${WWW}/faq.html" overwrite="true"/>
+    <replace file="${WWW}/faq.html" token="###HEAD###" value="${head}"/>
+    <replace file="${WWW}/faq.html" token="###FOOT###" value="${foot}"/>
+    <replace file="${WWW}/faq.html" token="###TITLE###" value="FAQ"/>
+    <replace file="${WWW}/faq.html" token="###VERSION###" value="${VERSION}"/>
+    <replace file="${WWW}/faq.html" token="faq_off-->" value=""/>
+    <replace file="${WWW}/faq.html" token="--faq_on" value="-- -->"/>
+
+    <copy file="${TEMPLATES}/index.html.template" tofile="${WWW}/index.html" overwrite="true"/>
+    <replace file="${WWW}/index.html" token="###HEAD###" value="${head}"/>
+    <replace file="${WWW}/index.html" token="###FOOT###" value="${foot}"/>
+    <replace file="${WWW}/index.html" token="###TITLE###" value="JJack Overview"/>
+    <replace file="${WWW}/index.html" token="###VERSION###" value="${VERSION}"/>
+    <replace file="${WWW}/index.html" token="index_off-->" value=""/>
+    <replace file="${WWW}/index.html" token="--index_on" value="-- -->"/>
+    <replace file="${WWW}/index.html" token="JJack JJack Overview" value="JJack Overview"/>
+
+    <!--<copy file="${TEMPLATES}/uml.html.template" tofile="${WWW}/uml.html" overwrite="true"/>
+    <replace file="${WWW}/uml.html" token="###HEAD###" value="${head}"/>
+    <replace file="${WWW}/uml.html" token="###FOOT###" value="${foot}"/>
+    <replace file="${WWW}/uml.html" token="###TITLE###" value="UML Class Diagram"/>
+    <replace file="${WWW}/uml.html" token="###VERSION###" value="${VERSION}"/>
+    <replace file="${WWW}/uml.html" token="uml_off- - >" value=""/>
+    <replace file="${WWW}/uml.html" token="- - uml_on" value="- - - - >"/>-->
+
+    	
+    <copy file="../Readme.txt.back" tofile="../Readme.txt" overwrite="true" failonerror="false"/> <!-- restore previous backup if still there -->
+    <move file="../Readme.txt" tofile="../Readme.txt.back" overwrite="false"/>
+    <copy file="../Readme.txt.back" tofile="../Readme.txt"/>
+    <!-- append list of files with descriptive comments at the end of the readme file -->
+    <replace file="../Readme.txt" token="${README_LIST_OF_FILES_TOKEN}" value="${treeasciiheadline}"/>
+    <replace file="../Readme.txt" token="${README_LIST_OF_FILES_TOKEN}" value="${treeascii}"/>
+	
+  </target>
+  
+</project>

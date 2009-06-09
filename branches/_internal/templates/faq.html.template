@@ -1,0 +1,62 @@
+###HEAD###
+
+<ul class='jjack_faq'>
+
+  <li>
+    <h2><i>Q:</i> How do I register JACK as a Java Sound mixer device?</h2>
+    <p>
+      Add <code>jjack.jar</code> to the classpath, and copy the native library file <code>libjjack.so</code> to your system's library path.
+      That's all, loading of the driver is done transparently by the Java virtual machine.
+    </p>
+  </li>
+
+  <li>
+    <h2 class='jjack_faq'><i>Q:</i> I want to develop a platform-independent audio application. Can I do it with JJack?</h2>
+    <p class='jjack_faq'>
+      JJack may be exactly what you are looking for. It provides an
+      interface between the <a href="http://jackit.sourceforge.net/">JACK
+      Audio Connection Kit</a> and the <a href="http://java.sun.com/">Java
+      programming language</a> to
+      make JACK's main features available from inside the Java virtual
+      machine. As JACK
+      is a professional audio system available for multiple platforms and
+      OSs, Java is an attractive
+      language for writing cross-platform clients for JACK. (The current
+      version
+      of JJack contains a Linux-version of the bridge library <code>libjjack.so</code>
+      only, but compiling it for other systems should be possible.)
+    </p>
+  </li>
+  
+  <li>
+    <h2 class='jjack_faq'><i>Q:</i> Isn't Java too slow to perform audio processing?</h2>
+    <p class='jjack_faq'>
+      Not necessarily. JJack uses some performance hints to be efficient, the
+      most important to mention is the use of direct ByteBuffers (see 
+      <a href="http://java.sun.com/j2se/1.4.2/docs/api/java/nio/ByteBuffer.html"><code>java.nio.ByteBuffer</code></a>)
+      to handle data exchange with the JACK daemon. Besides that, if a
+      program does a lot of numeric calculation witthout any other
+      interaction, there is a good chance that a just-in-time compiler will
+      create efficient code from the Java byte code.
+    </p>
+
+  </li>
+  
+  <li>
+    <h2 class='jjack_faq'><i>Q:</i> I get a native crash of the Java virtual machine when JJack is loaded. How can this be prevented?</h2>
+    <p class='jjack_faq'>
+      Try increasing the stack size for the Java virtual machine using the <code>-Xss</code> switch, e.g. <code>-Xss64m</code>.
+    </p>
+  </li>
+  
+  <li>
+    <h2 class='jjack_faq'><i>Q:</i> Does JJack run on Mac OS X?</h2>
+    <p class='jjack_faq'>
+      It is not tested yet. But if you know how to compile <code>libjjack.c</code>
+      to run on Macs, give it a try and please let me know how you did it.
+    </p>
+  </li>
+  
+</ul>
+
+###FOOT###

@@ -1,0 +1,175 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+  <meta content="text/html; charset=ISO-8859-1"
+ http-equiv="content-type">
+  <title>JJack Overview</title>
+  <link href="jjack.css" type="text/css" rel="stylesheet">
+  <meta name="author" content="Jens Gulden">
+</head>
+<body alink="#000099" vlink="#114411" link="#336633" bgcolor="#ccffcc"
+ text="#000000">
+<table cellpadding="0" cellspacing="0" border="1" width="100%">
+  <tbody>
+    <tr>
+      <td valign="top">
+      <table border="0" cellspacing="0" cellpadding="2" width="100%"
+ background="img/grid.png">
+        <tbody>
+          <tr>
+            <td valign="middle" align="center" nowrap="nowrap"> <font
+ face="helvetica,arial,sans-serif">JJack</font><br>
+            <img src="img/jack.png" alt="" width="75" height="15"><br>
+            <font face="helvetica,arial,sans-serif"><font size="-2">Jack-to-Java
+API</font><br>
+            </font> </td>
+            <td valign="top"> &nbsp;&nbsp;<br>
+            </td>
+            <td valign="middle" width="100%" colspan="2">
+            <table cellpadding="4" cellspacing="0" border="0"
+ width="100%">
+              <tbody>
+                <tr>
+                  <td valign="top"> <font
+ face="Helvetica, Arial, sans-serif"> <b>Overview</b>
+| <a href="download.html">Download</a>
+| <a href="audioscreenshots.html">Audio &amp; Screenshots</a> | <a
+ href="uml.html">UML</a>
+| <a href="documentation.html">Documentation</a></font><font
+ face="Helvetica, Arial, sans-serif">
+| </font><font face="Helvetica, Arial, sans-serif"><a
+ href="faq.html">FAQ</a></font>
+                  </td>
+                  <td nowrap="nowrap" align="right" valign="top"> <font
+ face="helvetica,arial,sans-serif"> <i>Jack up Java!</i><br>
+                  </font> </td>
+                </tr>
+              </tbody>
+            </table>
+            </td>
+          </tr>
+          <tr>
+            <td valign="top" align="center"> <br>
+            <br>
+            <br>
+            <br>
+            </td>
+            <td valign="top"> <br>
+            </td>
+            <td colspan="1" valign="top">
+            <table width="100%" border="0" cellspacing="2"
+ cellpadding="2">
+              <tbody>
+                <tr>
+                  <td valign="top"> <a href="img/jjack-schema2.png"><img
+ border="0" align="right" height="453" width="346" alt=""
+ src="img/jjack-schema2-small.png"></a>
+                  <h1>JJack Overview</h1>
+JJack is a framework for the <a href="http://java.sun.com/">Java
+programming language</a> that allows creating and running audio
+processor clients for the <a href="http://jackit.sourceforge.net/">JACK
+Audio Connection Kit</a>:<br>
+                  <ul>
+                    <li>Uses Java to create <b>audio
+processors</b> (effects processors, synthesizers etc.).</li>
+                    <li>Provides a <span style="font-weight: bold;">JavaBeans-compatible</span>
+event mechanism to interconnect audio processors.<br>
+                    </li>
+                    <li><b>Native bridge</b> code uses new <a
+ href="http://java.sun.com/j2se/1.4.2/docs/api/java/nio/ByteBuffer.html"><code>java.nio.ByteBuffer</code></a>
+for direct memory access from Java.<br>
+                    </li>
+                  </ul>
+                  <h2>Example Audio Processors</h2>
+The distribution package contains some <a href="../jjack-clients.html">example
+audio processors</a> to demonstrate JJack's features, e. g.:<br>
+                  <br>
+                  <table border="0" cellspacing="2"
+ cellpadding="5">
+                    <tbody>
+                      <tr>
+                        <td valign="top">
+                        <ul>
+                          <li><a href="../jjack-clients.html#DELAY">Delay-Effect</a></li>
+                        </ul>
+                        </td>
+                        <td valign="top"><a
+ href="../jjack-clients.html#DELAY"><img
+ src="img/client_delay.png"
+ alt="Delay client" width="245" height="56" bordercolor="#000000"
+ border="1"></a></td>
+                      </tr>
+                      <tr>
+                        <td valign="top">
+                        <ul>
+                          <li><a href="../jjack-clients.html#OSCILLATOR">Oscillator</a></li>
+                        </ul>
+                        </td>
+                        <td valign="top"><a
+ href="../jjack-clients.html#OSCILLATOR"><img
+ src="img/client_oscillator_smaller.png"
+ alt="Oscillator client" width="245" height="101" border="1"></a></td>
+                      </tr>
+                      <tr>
+                        <td valign="top">
+                        <ul>
+                          <li><a href="../jjack-clients.html#VU">VU-Meter</a></li>
+                        </ul>
+                        </td>
+                        <td valign="top"><a
+ href="../jjack-clients.html#VU"><img border="1" height="120" width="20"
+ alt="VU-Meter client"
+ src="img/client_vu.png"></a></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <ul>
+                  </ul>
+See <a href="audioscreenshots.html">Screenshots</a> for more pictures.<br>
+                  <h2>Related Links</h2>
+                  <ul>
+                    <li><a href="http://jackit.sourceforge.net/">JACK
+Audio Connection Kit</a><br>
+                    </li>
+                    <li><a
+ href="http://java.sun.com/j2se/1.4.2/docs/guide/jni/jni-14.html">Java
+Native Interface Extensions introduced in Version 1.4 of the Java2 SDK</a></li>
+                    <li><a
+ href="http://java.sun.com/products/javabeans/beanbuilder/index.jsp">Java
+BeanBuilder</a></li>
+                  </ul>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <center> <img src="img/jjackborder.png" alt="" width="200"
+ height="35"> <br>
+            </center>
+            </td>
+            <td valign="top">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+            <br>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" valign="middle"> <br>
+            </td>
+            <td valign="top"><br>
+            </td>
+            <td colspan="2" align="right" valign="middle"> <font
+ color="#666666" size="-1"> <i>&copy; Jens Gulden 2004<br>
+Licensed under the <a href="http://www.gnu.org/licenses/lgpl.html"
+ target="_blank"><font color="#666666">LGPL</font></a></i></font><br>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<font color="#666666" size="-1"><br>
+<i><img src="http://developer.berlios.de/sflogo.php?group_id=1786"
+ alt="berliOS" width="62" height="16" align="right"></i>
+</font>
+</body>
+</html>

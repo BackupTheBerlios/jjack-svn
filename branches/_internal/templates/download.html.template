@@ -1,0 +1,28 @@
+###HEAD###
+    
+<div class='jjack_downloadlink'>
+  <a href="http://download.berlios.de/jjack/jjack-###ARCHIVE_VERSION###.tgz"><img height="32" width="32" alt="" src="img/grydisk.png"/></a>&nbsp;<a href="http://download.berlios.de/jjack/jjack-###ARCHIVE_VERSION###.tgz">jjack-###ARCHIVE_VERSION###.tgz</a> <small>(###ARCHIVE_SIZE### MB)</small>
+<p>                  
+  Previous versions may be found in the <a href="http://developer.berlios.de/project/showfiles.php?group_id=1786">distribution archive</a> on the <a href="http://developer.berlios.de/projects/jjack/">JJack development site</a>.<br/>
+  You may also want to <a href="http://developer.berlios.de/cvs/?group_id=1786">browse the sources online in the CVS archive</a>.
+</p>
+</div>
+    
+  <p>
+    The distribution archive contains:
+  </p>
+  <ul>
+    <li>The <b>JJack framework API classes</b> and <b>documentation</b></li>
+    <li>Example <b>JJack clients</b></li>
+    <li>The <b>JJack shell application</b></li>
+    <li>All Java <b>source files</b> and precompiled <b>.class</b> and <b>.jar files</b>.</li>
+  </ul>
+      
+  <p>File contents in archive <tt>jjack-###ARCHIVE_VERSION###.tgz</tt>:</p>
+  
+  <div class='jjack_archivecontent'>
+    ###ARCHIVE_CONTENTS###
+  </div>
+
+
+###FOOT###

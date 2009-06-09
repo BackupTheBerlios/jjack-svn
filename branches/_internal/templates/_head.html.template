@@ -1,0 +1,46 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+  <meta content="text/html; charset=ISO-8859-1" http-equiv="content-type"/>
+  <title>JJack ###TITLE###</title>
+  <link rel="stylesheet" type="text/css" href="img/jjack.css"/>
+  <meta name="author" content="Jens Gulden"/>
+</head>
+<body>
+
+  <div class='jjack_head'>
+  
+    <div class='jjack_logo'>
+      <div class='jjack_logo_head'>JJack</div>
+      <div class='jjack_logo_body'><img src="img/jack.png" alt="" width="75" height="15"/></div>
+      <div class='jjack_logo_foot'>Jack-to-Java</div>
+    </div>
+      
+    <div class='jjack_projecttitle'>JJack ###VERSION###</div>
+    
+    <div class='jjack_logoright'>Jack up Java!</div>
+    
+    <div class='jjack_menu'>
+        <!--index_off-->         <a href="index.html">Overview</a>
+        <!--index_on             <b>Overview</b>                       index_off-->
+      | <!--download_off-->      <a href="download.html">Download</a>
+        <!--download_on          <b>Download</b>                       download_off-->
+      | <!--documentation_off--> <a href="documentation.html">Documentation</a>
+        <!--documentation_on     <b>Documentation</b>                  documentation_off-->
+      | <!--examples_off-->      <a href="examples.html">Examples</a>
+        <!--examples_on          <b>Examples</b>                       examples_off-->
+      | <!--faq_off-->           <a href="faq.html">FAQ</a>
+        <!--faq_on               <b>FAQ</b>                            faq_off-->
+    </div>
+    
+    <div style='clear:both'></div>
+    
+  </div>
+
+  <div class='jjack_body'>
+
+    <h1 class='jjack_title'>###TITLE###</h1>
+    
+    <div class='jjack_content'>
+    
+    <!-- page content ---------------------------------------------------- -->

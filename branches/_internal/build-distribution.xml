@@ -1,0 +1,204 @@
+<!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ANT build script for a JJack distribution archive.
+    This script builds a complete distribution archive after performing
+    a project build.
+    
+    INTERNAL build file - this is not included in the distribution archive itself or in CVS.
+    REQUIRES file make/make.xml
+    
+    MUST BE RUN AT LEAST TWO TIMES before it works properly, see target 'doc'.
+    Before the first run, a dummy-distribution archive must be copied to
+    DISTRIBUTION_FILE (preferrably an earlier version of JJack's
+    distribution archive).
+   
+    Environment: ANT 1.5, BeautyJ 1.1, J2SDK 1.4, gcc 3.3, Linux.
+    Other configurations may or may not work.
+    (For BeautyJ, see http://beautyj.berlios.de/.)
+   
+    Copyright (c) Jens Gulden 2004-2006
+    Licensed under the GNU Lesser General Public License (LGPL).
+    This comes with NO WARRANTY, see file License.txt.
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+
+<project name="jjack" default="all" basedir="..">
+
+  <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    Make BeautyJ task known to ANT.
+  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+  <taskdef name="beautyj" classname="beautyjTask" classpath="/usr/java/beautyJ-1_1/lib/beautyj.jar:/home/jgulden/workspace/jjack/classes"/>
+
+
+  <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    Main target to build everything.
+  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+  <target name="all" depends="init, beautyj, doc, distribution">
+    <echo message="Distribution ok."/>
+  </target>
+
+
+  <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    Initialize global properties.
+  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+  <target name="init">
+    <!--property name="PROJECT"  location="/home/jgulden/workspace/jjack"/-->
+    <property name="VERSION"  value="0.3"/>
+    <property name="VERSION_NAME"  value="0_3"/>
+    <!--property name="SRC_UTIL"  location="/home/jgulden/workspace/util"/-->
+    <!--property name="SRC_UTIL"  location="src"/-->
+    <property name="DISTRIBUTION_FILE" location="_internal/distribution/jjack-${VERSION_NAME}.tgz"/>
+    <property name="LICENSE"  value="GNU Lesser General Public License (LGPL)"/>
+    <property name="LICENSE_MESSAGE"  value="Licensed under the ${LICENSE}.\nThis comes with NO WARRANTY. See file license.txt for details."/>
+    <property name="JAVA_HOME"  location="/usr/java/java"/>
+    <property name="TMP"  location="/tmp"/>
+    <condition property="NO_ARCHIVE_YET">
+      <not>
+        <available file="${DISTRIBUTION_FILE}"/>
+      </not>
+    </condition>
+  </target>
+
+  <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    Make documentation.
+  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+  <target name="doc" depends="init">
+    <!-- 
+      uses previously generated distribution archive to generate html description,
+      i.e. this script must at least be run twice in order to work properly,
+      with a dummy archive as DISTRIBUTION_FILE in the first run (e.g. an
+      earlier version)
+      This is not very clean, but this is only an internal build script.
+    -->
+  	<subant antfile="_internal/build-templates.xml" inheritAll="true"/>
+  </target>
+
+
+  <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    Beautify sources, set current date in comment headers.
+  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+  <target name="beautyj" depends="init">
+    <!--
+    <delete dir="classes" failonerror="false"/>
+    <mkdir dir="classes"/>    
+    < ! - - pre-compile util classes to have them accessible on the classpath - - >
+    <javac destdir="classes" debug="on">
+      <src path="${SRC_UTIL}"/>
+      < ! - -exclude name="de/gulden/util/xml/**"/- - >
+    </javac>    
+    -->
+    
+    <delete dir="src_beautified" failonerror="false"/>
+    <mkdir dir="src_beautified"/>
+
+    <beautyj d="${basedir}/src_beautified"
+             project_name="JJack - Java bridge API for the JACK Audio Connection Kit"
+             project_version="${VERSION}"
+             project_description="${LICENSE_MESSAGE}"
+             author_name="Jens Gulden"
+             code_clean="yes"
+             method_remove_text="dummy"
+             class_remove_text="author"
+             verbose="no">
+        <src path="src"/>
+    </beautyj>
+    
+    <!--
+    <beautyj d="${basedir}/src_beautified"
+             project_name="Gulden's Utilities [here as part of JJack]"
+             project_version="${VERSION}"
+             project_description="${LICENSE_MESSAGE}\n\nNote: This utility class is only provided for compiling JJack,\nit is not part of JJack's CVS tree."
+             author_name="Jens Gulden"
+             code_clean="yes"
+             method_remove_text="dummy"
+             class_remove_text="author"
+             verbose="no">
+      <src path="${SRC_UTIL}/de/gulden/util/Toolbox.java"/>
+      < ! - -src path="${SRC_UTIL}/de/gulden/util/OrderedHashMap.java"/- - >
+      < ! - -src path="${SRC_UTIL}/de/gulden/util/nio"/- - >
+      < ! - -src path="${SRC_UTIL}/de/gulden/util/swing"/- - >
+      <src path="${SRC_UTIL}/de/gulden/util/swing/DefaultMeterModel.java"/>
+      <src path="${SRC_UTIL}/de/gulden/util/swing/LED.java"/>
+      <src path="${SRC_UTIL}/de/gulden/util/swing/MeterModel.java"/>
+      <src path="${SRC_UTIL}/de/gulden/util/swing/SliderLabeled.java"/>
+      <src path="${SRC_UTIL}/de/gulden/util/swing/SpinButton.java"/>
+      <src path="${SRC_UTIL}/de/gulden/util/swing/SpinButtonLabeled.java"/>
+      <src path="${SRC_UTIL}/de/gulden/util/swing/VUMeter.java"/>
+      <src path="${SRC_UTIL}/de/gulden/util/nio/FifoFloat.java"/>
+      <src path="${SRC_UTIL}/de/gulden/util/nio/RingFloat.java"/>
+    </beautyj>
+    -->
+        
+    <delete file="src_beautified/Test.java" failonerror="false"/>
+    <delete dir="src_beautified/de/gulden/framework/jjack/examples" failonerror="false"/>
+
+    <mkdir dir="src_beautified/de/gulden/application/jjack/res"/>
+    <copy todir="src_beautified/de/gulden/application/jjack/res">
+      <fileset dir="src/de/gulden/application/jjack/res"/>
+    </copy>  
+    <mkdir dir="src_beautified/de/gulden/application/jjack/clients/res"/>
+    <copy todir="src_beautified/de/gulden/application/jjack/clients/res">
+      <fileset dir="src/de/gulden/application/jjack/clients/res"/>
+    </copy>  
+    <copy todir="src_beautified/de/gulden/framework/jjack">
+      <fileset dir="src/de/gulden/framework/jjack" includes="libjjack.c,libjjack.h"/>
+    </copy>
+  </target>
+
+  
+  <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    Create distribution archive.
+  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+  <target name="distribution" depends="beautyj, doc">
+    <!-- task "rename" is deprecated, but works fine here for renaming directories -->
+    
+    <rename src="src" dest="src_back"/>
+    <rename src="src_beautified" dest="src"/>
+    
+    <!-- - - - build project - - - - - - - - - - - - - - - - - - - - - - - -->
+    <subant antfile="make/build.xml" buildpath="${basedir}"/>
+    <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
+    
+    <copy todir="doc">
+      <fileset dir="_internal">
+        <include name="www/**"/>
+        <exclude name="www/download.html.template"/>
+      </fileset>
+    </copy>
+    
+    <tar destfile="${DISTRIBUTION_FILE}" compression="gzip">
+      <tarfileset dir="." prefix="jjack-${VERSION_NAME}">
+        <include name="bin/**"/>
+        <exclude name="bin/*.sh"/>
+        <include name="classes/**"/>
+        <include name="doc/**"/>
+        <exclude name="doc/uml/*.zargo"/>
+        <include name="lib/**"/>
+        <include name="make/**"/>
+        <include name="src/**"/>
+        <include name="*.txt"/>
+        <exclude name="**/.xvpics/**"/>
+        <exclude name="**/.xvpics/*"/>
+        <exclude name="**/.xvpics"/>
+        <exclude name="**/.nbattrs"/>
+        <exclude name="**/*.template"/>
+        <exclude name="**/*~"/>
+      </tarfileset>     
+      <tarfileset dir="." prefix="jjack-${VERSION_NAME}" mode="755">
+        <include name="bin/*.sh"/>
+      </tarfileset>     
+    </tar>
+    
+    <!-- clean to original state -->
+    <delete dir="src" failonerror="true"/>
+    <rename src="src_back" dest="src"/>
+    <delete dir="doc/www" failonerror="true"/>
+    <copy src="Readme.txt.back" dest="Readme.txt"/>
+    <delete file="Readme.txt.back" failonerror="true"/>
+    <!--<delete file="Readme.txt" failonerror="true"/>
+    <move src="Readme.txt.back" dest="Readme.txt"/>-->
+
+    <echo message="---"/>
+    <echo message="PLEASE REMEMBER TO RUN THIS SCRIPT 2 TIMES (Jens)"/>
+    <echo message="---"/>
+  </target>
+  
+</project>
