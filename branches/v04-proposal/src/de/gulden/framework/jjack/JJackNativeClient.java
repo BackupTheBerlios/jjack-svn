@@ -13,7 +13,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Set;
 
 
@@ -26,7 +25,7 @@ public class JJackNativeClient {
 
 	private long infPointer = 0;
 	private JJackAudioProcessor processor;
-	private Set listeners = new HashSet();
+	private Set<JJackNativeClientListener> listeners = new HashSet<JJackNativeClientListener>();
 	private FloatBuffer[] outAsFloat;
 	private FloatBuffer[] inAsFloat;
 	private JJackAudioEvent event;
@@ -39,17 +38,28 @@ public class JJackNativeClient {
 	 * @param portsIn: number of input ports
 	 * @param portsOut: number of output ports
 	 * @param proc: processor for jack callback
-	 * @param priority: priority of JACK thread; 0 or less means default priority
 	 * @throws JJackException
 	 */
 	public JJackNativeClient(String name, int portsIn, int portsOut, JJackAudioProcessor proc) throws JJackException {
+		this(name, portsIn, portsOut, proc, true);
+	}
+	
+	/**
+	 * @param name
+	 * @param portsIn
+	 * @param portsOut
+	 * @param proc
+	 * @param isDaemon: flag indicating whether to attach JACK thread as daemon
+	 * @throws JJackException
+	 */
+	public JJackNativeClient(String name, int portsIn, int portsOut, JJackAudioProcessor proc, boolean isDaemon) throws JJackException {
 		if (!isInitialized()) throw new JJackException("jjack not initialized");
 		if (name==null || name.equals("")) throw new IllegalArgumentException("name cannot be null or empty");
 		if (portsIn<0 || portsIn>getMaxPorts()) throw new IllegalArgumentException("input ports out of range");
 		if (portsOut<0 || portsOut>getMaxPorts()) throw new IllegalArgumentException("output ports out of range");
 		if (proc==null) throw new IllegalArgumentException("processor cannot be null");
 
-		infPointer = openClient(name, portsIn, portsOut);
+		infPointer = openClient(name, portsIn, portsOut, isDaemon);
 		processor = proc;
 		inAsFloat = new FloatBuffer[portsIn];
 		outAsFloat = new FloatBuffer[portsOut];
@@ -131,16 +141,17 @@ public class JJackNativeClient {
 
 	// only private stuff after this point
 
-	private native long openClient(String clientName, int portsIn, int portsOut) throws JJackException;
+	private native long openClient(String clientName, int portsIn, int portsOut, boolean isDaemon) throws JJackException;
 	private native void startClient(long infPtr, String sourceTarget, String sinkTarget) throws JJackException;
 	private native void closeClient(long infPtr);
 
 	/**
-	 * This method is called directly from native code, and only from there.
+	 * JACK processing callback; called directly from native code, and only from there.
 	 *
 	 * @param in: the direct memory access input buffer
 	 * @param out: the direct memory access output buffer
 	 */
+	@SuppressWarnings("unused")
 	private void processBytes(ByteBuffer[] in, ByteBuffer[] out, boolean realloc) {
 		if (realloc) {
 			for (int i=0; i<out.length; i++) {
@@ -164,11 +175,11 @@ public class JJackNativeClient {
 	/**
 	 * This method is called directly from native code in the event of zombification.
 	 */
+	@SuppressWarnings("unused")
 	private synchronized void handleShutdown() {
 		System.err.println("native jack client "+this+" has been zombified!");
 		JJackNativeClientEvent e = new JJackNativeClientEvent(this);
-		for(Iterator iter=listeners.iterator(); iter.hasNext();) {
-			JJackNativeClientListener listener = (JJackNativeClientListener) iter.next();
+		for(JJackNativeClientListener listener: listeners) {
 			listener.handleShutdown(e);
 		}
 	}

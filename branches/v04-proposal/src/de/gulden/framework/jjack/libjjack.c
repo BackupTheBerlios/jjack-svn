@@ -27,7 +27,7 @@
  * 2009-05-13 (PB):  - Got rid of some static calls
  * 2009-05-13 (PB):  - added shutdown callback
  * 2009-05-19 (PB):  - support for further streamlining of Java callback
- *
+ * 
  * Possible compile commands:
  *
  * gcc -fPIC -I/usr/java/java/include -I/usr/java/java/include/linux -I/usr/include/jack -c libjjack.c
@@ -47,21 +47,21 @@
 #include "libjjack.h"
 
 /*
- * Maximum number of ports to be allocated.
+ * Maximum number of ports to be allocated. 
  */
 #define MAX_PORTS 64
 
 /*
- * Symbols for input, output.
+ * Symbols for input, output. 
  */
 typedef enum {
-    INPUT,
-    OUTPUT,
+    INPUT, 
+    OUTPUT, 
     MODES   /* total count */
 } MODE;
 
 /*
- * Constant strings. Some of these reflect the names of Java identifiers.
+ * Constant strings. Some of these reflect the names of Java identifiers. 
  */
 const char *CLASS_BYTEBUFFER = "java/nio/ByteBuffer";
 const char *CLASS_JJACKEXCEPTION = "de/gulden/framework/jjack/JJackException";
@@ -74,7 +74,7 @@ const unsigned long MODE_JACK[MODES] = { JackPortIsInput, JackPortIsOutput };
 
 /*
  * Global memory to store values needed for performing the Java callback
- * from the JACK thread. A pointer to this structure is passed to the
+ * from the JACK thread. A pointer to this structure is passed to the 
  * process()-function as argument 'void *arg'.
 */
 typedef struct Inf {
@@ -84,6 +84,7 @@ typedef struct Inf {
     jack_port_t *port[MODES][MAX_PORTS];
     jack_default_audio_sample_t *sampleBuffers[MODES][MAX_PORTS];
     jobjectArray byteBufferArray[MODES];
+    int isDaemon;
 } *INF;
 
 JavaVM *cached_jvm;              /* jvm pointer */
@@ -92,7 +93,7 @@ jmethodID processCallback = NULL;
 jmethodID shutdownCallback = NULL;
 
 
-/*
+/* 
  * Main JACK audio process chain callback. From here, we will branch into the
  * Java virtual machine to let Java code perform the processing.
  */
@@ -102,16 +103,19 @@ int process(jack_nframes_t nframes, void *arg) {
   int mode, i;
   jboolean reallocated = JNI_FALSE;
 
-  if ((*cached_jvm)->AttachCurrentThreadAsDaemon(cached_jvm,
-                                (void**) &env, NULL)) {
+  int res = (inf->isDaemon ?
+        (*cached_jvm)->AttachCurrentThreadAsDaemon(cached_jvm,
+                (void**) &env, NULL) :
+        (*cached_jvm)->AttachCurrentThread(cached_jvm, (void**) &env, NULL));
+  if (res) {
     fprintf(stderr, "FATAL: cannot attach JACK thread to JVM\n");
     return -1;
   }
-
+  
   for(mode=INPUT; mode<=OUTPUT; mode++) {
     for(i=0; i<inf->portCount[mode]; i++) {
       // Only reallocate if the buffer position changes
-      jack_default_audio_sample_t *tempSampleBuffer =
+      jack_default_audio_sample_t *tempSampleBuffer = 
             (jack_default_audio_sample_t *)
                   jack_port_get_buffer(inf->port[mode][i], nframes);
       if (tempSampleBuffer!=inf->sampleBuffers[mode][i]) {
@@ -128,8 +132,8 @@ int process(jack_nframes_t nframes, void *arg) {
 
   (*env)->CallVoidMethod(env, inf->owner, processCallback,
       inf->byteBufferArray[INPUT], inf->byteBufferArray[OUTPUT], reallocated);
-
-  return 0;
+  
+  return 0;      
 }
 
 /*
@@ -149,10 +153,10 @@ void shutdown(void *arg) {
 }
 
 /*
- * Throw a JJackException in Java with an optional second description text.
+ * Throw a JJackException in Java with an optional second description text. 
  */
-void throwExc2(JNIEnv *env, char *msg, char *msg2) {
-    jclass clsExc = (*env)->FindClass(env, CLASS_JJACKEXCEPTION);
+void throwExc2(JNIEnv *env, char *msg, char *msg2) {	
+    jclass clsExc = (*env)->FindClass(env, CLASS_JJACKEXCEPTION);	
     char m[255] = "";
     if (msg != NULL) {
         strcat(m, msg);
@@ -166,17 +170,17 @@ void throwExc2(JNIEnv *env, char *msg, char *msg2) {
     } else {
         (*env)->ThrowNew(env, clsExc, m);
     }
-}
+}	
 
 /*
- * Throw a JJackException in Java with a description text.
+ * Throw a JJackException in Java with a description text. 
  */
-void throwExc(JNIEnv *env, char *msg) {
+void throwExc(JNIEnv *env, char *msg) {	
     throwExc2(env, msg, NULL);
 }
 
 /*
- * Allocate string memory.
+ * Allocate string memory. 
  */
 const char *allocchars(JNIEnv *env, jstring js) {
     return (*env)->GetStringUTFChars(env, js, 0);
@@ -208,11 +212,11 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *jvm, void *reserved) {
     return JNI_ERR;
   }
 
-  jobject obj = (*env)->FindClass(env, CLASS_BYTEBUFFER);
+  jobject obj = (*env)->FindClass(env, CLASS_BYTEBUFFER);	
   if (obj == NULL) {
     return JNI_ERR;
   }
-  cls_ByteBuffer = (*env)->NewWeakGlobalRef(env, obj);
+  cls_ByteBuffer = (*env)->NewWeakGlobalRef(env, obj);	
 
   return JNI_VERSION_1_4;
 }
@@ -232,12 +236,17 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *jvm, void *reserved) {
 /*
  * private native long openClient(String, int, int) throws JJackException
  */
-JNIEXPORT jlong JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_openClient(JNIEnv *env, jobject obj, jstring clientName, jint portsIn, jint portsOut) {
+JNIEXPORT jlong JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_openClient(JNIEnv *env, jobject obj, jstring clientName, jint portsIn, jint portsOut, jboolean isDaemon) {
   INF inf = (INF) malloc(sizeof(struct Inf));
   const char *name;
   jack_client_t *client;
   char *portName;
   int mode, i;
+
+  if (inf==NULL) {
+      throwExc(env, "can't allocate memory");
+      return 0;
+  }
 
   if (processCallback==NULL) { // first call?
     jclass cls = (*env)->GetObjectClass(env, obj);
@@ -259,6 +268,7 @@ JNIEXPORT jlong JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_openCli
   }
 
   inf->owner = (*env)->NewWeakGlobalRef(env, obj);
+  inf->isDaemon = (isDaemon==JNI_TRUE);
 
   name = allocchars(env, clientName);
   fprintf(stderr, "natively opening jack client \"%s\"\n", name);
@@ -323,13 +333,14 @@ JNIEXPORT void JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_startCli
       char *targetPort = allocchars(env, target);
       int portFlags = (*targetPort) ? 0 : JackPortIsPhysical;
       fprintf(stderr, "autoconnecting %s ports\n", MODE_LABEL[mode]);
-      if ((ports = jack_get_ports(inf->client, targetPort,
-              NULL, portFlags|MODE_JACK[ 1 - mode ])) == NULL) {
+      ports = jack_get_ports(inf->client, targetPort, NULL,
+                    portFlags|MODE_JACK[ 1 - mode ]);
+      freechars(env, target, targetPort);
+      if (ports == NULL) {
           /* (1-mode as we connect outputs to inputs and inputs to outputs) */
         throwExc2(env, "Cannot find ports to autoconnect to", MODE_LABEL[mode]);
         return;
       }
-      freechars(env, target, targetPort);
 
       for (i=0; i<inf->portCount[mode]; i++) {
         fprintf(stderr, "%s %i\n", MODE_LABEL[mode], (i+1));

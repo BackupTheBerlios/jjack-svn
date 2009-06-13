@@ -1,9 +1,6 @@
 <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     ANT build script for JJack.
    
-    Environment: ANT 1.5,  J2SDK 1.4, gcc 3.3, Linux.
-    Other configurations may or may not work.
-   
     Copyright (c) Jens Gulden 2004-2006
     Licensed under the GNU Lesser General Public License (LGPL).
     This comes with NO WARRANTY, see file LICENSE.
@@ -30,6 +27,7 @@
     <!-- clean for target 'jars' -->
     <delete file="lib/jjack.jar" failonerror="false"/>
     <delete file="lib/jjack-clients.jar" failonerror="false"/>
+    <delete file="lib/jjack_min.jar" failonerror="false"/>
     <!-- clean for target 'javadoc' -->
     <delete dir="doc/api" failonerror="false"/>
     <!-- no clean for target 'gcc' to keep externally built native libs -->
@@ -51,7 +49,7 @@
   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
   <target name="javac" depends="init">
     <mkdir dir="classes"/>
-    <javac source="1.4" target="1.4" destdir="classes" debug="on">
+    <javac source="1.5" target="1.5" destdir="classes" debug="on">
       <src path="src"/>
       <include name="com/petersalomonsen/**"/>
       <include name="de/gulden/framework/jjack/**"/>
@@ -93,7 +91,7 @@
   <target name="javah" depends="init">
     <!-- the javah ant task appears to be buggy under Ant1.5/j2sdk1.4.1/Linux, so call as executable -->
     <!--<javah class="de.gulden.framework.jjack.JJackSystem" outputFile="de/gulden/framework/jjack/libjjack.h"/>-->
-    <exec executable="${JAVA_HOME}/bin/javah" dir="." failonerror="yes">
+    <exec executable="/usr/bin/javah" dir="." failonerror="yes">
       <arg value="-classpath"/>
       <arg value="classes"/>
       <arg value="-o"/>
@@ -107,11 +105,47 @@
     Compile libjjack.
     This is the native bridge library implementing the native methods
     declared by class de.gulden.framework.jjack.JJackNativeClient.
-    *** The configuration below is running on Linux with gcc 2.95.4,
-    *** other environments have not been tested.
   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -->
-  <target name="gcc" depends="init, javah">
-    <mkdir dir="lib/${os.arch}/${os.name}"/>
+  <target name="gcc" depends="init, javac, javah">
+    <condition property="isMacOSX">
+      <os name="Mac OS X"/>
+    </condition>
+    <condition property="isLinux32">
+      <and>
+        <os name="Linux"/>
+        <os arch="i386"/>
+      </and>
+    </condition>
+    <condition property="isLinux64">
+      <and>
+        <os name="Linux"/>
+        <os arch="amd64"/>
+      </and>
+    </condition>
+    <mkdir dir="lib/${os.arch}/${os.name}" />
+    <antcall target="gcc_mac"/>
+    <antcall target="gcc_linux32"/>
+    <antcall target="gcc_linux64"/>
+  </target>
+
+  <target name="gcc_mac" if="isMacOSX">
+    <exec executable="gcc" dir="src/de/gulden/framework/jjack" failonerror="yes">
+      <arg value="-I/System/Library/Frameworks/JavaVM.framework/Versions/1.5.0/Headers"/>
+      <arg value="-I/usr/local/include/jack"/>
+      <arg value="-c"/>
+      <arg value="libjjack.c"/>
+    </exec>
+    <exec executable="gcc" dir="src/de/gulden/framework/jjack" failonerror="yes">
+      <arg value="-dynamiclib"/>
+      <arg value="-ljack"/>
+      <arg value="-L/usr/local/lib"/>
+      <arg value="-o"/>
+      <arg value="../../../../../lib/${os.arch}/${os.name}/libjjack.dylib"/>
+      <arg value="libjjack.o"/>
+    </exec>
+  </target>
+
+  <target name="gcc_linux32" if="isLinux32">
     <exec executable="gcc" dir="src/de/gulden/framework/jjack" failonerror="yes">
       <arg value="-fPIC"/>
       <arg value="-I${JAVA_HOME}/include"/>
@@ -130,6 +164,24 @@
     </exec>
   </target>
 
+  <target name="gcc_linux64" if="isLinux64">
+    <exec executable="gcc" dir="src/de/gulden/framework/jjack" failonerror="yes">
+      <arg value="-fPIC"/>
+      <arg value="-I${JAVA_HOME}/include"/>
+      <arg value="-I${JAVA_HOME}/include/linux"/>
+      <arg value="-I/usr/include/jack"/>
+      <arg value="-c"/>
+      <arg value="libjjack.c"/>
+    </exec>
+    <exec executable="gcc" dir="src/de/gulden/framework/jjack" failonerror="yes">
+      <arg value="-shared"/>
+      <arg value="-fPIC"/>
+      <arg value="-ljack"/>
+      <arg value="-o"/>
+      <arg value="../../../../../lib/${os.arch}/${os.name}/libjjack.so"/>
+      <arg value="libjjack.o"/>
+    </exec>
+  </target>
 
   <!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     Create jars.
@@ -145,6 +197,7 @@
       <fileset dir="classes" includes="de/gulden/application/jjack/res/*.png"/>
       <fileset dir="classes" includes="JJack.class"/>
       <fileset dir="classes" includes="JJackSystem.class"/>
+      <fileset dir="classes" includes="JJackNativeClient.class"/>
       <fileset dir="classes" includes="de/gulden/util/Toolbox.class"/>
       <fileset dir="src" includes="META-INF/services/*" />
     	<manifest>
@@ -183,6 +236,17 @@
         </section>
       </manifest>
     </jar>
+
+    <jar destfile="lib/jjack_min.jar" compress="false">
+      <fileset dir="classes" includes="de/gulden/framework/jjack/JJackAudioEvent.class"/>
+      <fileset dir="classes" includes="de/gulden/framework/jjack/JJackAudioProcessor.class"/>
+      <fileset dir="classes" includes="de/gulden/framework/jjack/JJackException.class"/>
+      <fileset dir="classes" includes="de/gulden/framework/jjack/JJackFileName.class"/>
+      <fileset dir="classes" includes="de/gulden/framework/jjack/JJackNativeClient.class"/>
+      <fileset dir="classes" includes="de/gulden/framework/jjack/JJackNativeClientEvent.class"/>
+      <fileset dir="classes" includes="de/gulden/framework/jjack/JJackNativeClientListener.class"/>
+    </jar>
+     
   </target>
 
   
