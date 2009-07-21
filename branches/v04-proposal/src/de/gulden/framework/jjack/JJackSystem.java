@@ -33,7 +33,7 @@ public class JJackSystem implements JJackConstants {
 	/**
 	 * JJack version number.
 	 */
-	public static final String VERSION = "0.3";
+	public static final String VERSION = "0.4";
 
 	/**
 	 * Flag for debug mode.
