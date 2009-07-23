@@ -29,7 +29,8 @@ public class JJackNativeClient {
 	private FloatBuffer[] outAsFloat;
 	private FloatBuffer[] inAsFloat;
 	private JJackAudioEvent event;
-	
+	private int portsIn, portsOut;
+
 
 	/**
 	 * Constructor; opens native client
@@ -43,8 +44,10 @@ public class JJackNativeClient {
 	public JJackNativeClient(String name, int portsIn, int portsOut, JJackAudioProcessor proc) throws JJackException {
 		this(name, portsIn, portsOut, proc, true);
 	}
-	
+
 	/**
+	 * Opens and starts a native JACK client
+	 * 
 	 * @param name
 	 * @param portsIn
 	 * @param portsOut
@@ -59,23 +62,110 @@ public class JJackNativeClient {
 		if (portsOut<0 || portsOut>getMaxPorts()) throw new IllegalArgumentException("output ports out of range");
 		if (proc==null) throw new IllegalArgumentException("processor cannot be null");
 
-		infPointer = openClient(name, portsIn, portsOut, isDaemon);
+		this.portsIn = portsIn;
+		this.portsOut = portsOut;
 		processor = proc;
 		inAsFloat = new FloatBuffer[portsIn];
 		outAsFloat = new FloatBuffer[portsOut];
 		event = new JJackAudioEvent(0, this, inAsFloat, outAsFloat);
+		infPointer = openClient(name, portsIn, portsOut, isDaemon);
 	}
 
 	/**
-	 * activates the client and connects it to other clients if requested
+	 * connects all input ports to ports specified by target
 	 * 
-	 * @param sourceTarget: indicates client to connect input ports to; null means no connection, "" means connection to physical ports, otherwise connect to client given by name
-	 * @param sinkTarget: indicates client to connect output ports to; same semantics as sourceTarget
+	 * @param target regular expression specifying target ports
+	 * @throws JJackException if the number of input ports exceeds the number of output ports matching target
+	 */
+	public void connectInputPorts(String target) throws JJackException {
+		connectInputPorts(0, portsIn, target);
+	}
+
+	/**
+	 * connects all output ports to ports specified by target
+	 * 
+	 * @param target regular expression specifying target ports
+	 * @throws JJackException if the number of output ports exceeds the number of ports matching target
+	 */
+	public void connectOutputPorts(String target) throws JJackException {
+		connectOutputPorts(0, portsOut, target);
+	}
+
+	/**
+	 * connects a given range of input ports to ports specified by target
+	 * 
+	 * @param port first port to be connected
+	 * @param range number of ports to be connected
+	 * @param target regular expression specifying target ports
+	 * @throws JJackException if range exceeds number of ports matching target
+	 */
+	public void connectInputPorts(int port, int range, String target) throws JJackException {
+		if (infPointer!=0) {
+			connectInputPorts(infPointer, port, range, target);
+		} else {
+			throw new JJackException("native client invalid");
+		}
+	}
+
+	/**
+	 * connects a given range of output ports to ports specified by target
+	 * 
+	 * @param port first port to be connected
+	 * @param range number of ports to be connected
+	 * @param target regular expression specifying target ports
+	 * @throws JJackException if range exceeds number of ports matching target
+	 */
+	public void connectOutputPorts(int port, int range, String target) throws JJackException {
+		if (infPointer!=0) {
+			connectOutputPorts(infPointer, port, range, target);
+		} else {
+			throw new JJackException("native client invalid");
+		}
+	}
+
+	/**
+	 * disconnects all input ports
+	 * 
 	 * @throws JJackException
 	 */
-	public void start(String sourceTarget, String sinkTarget) throws JJackException {
+	public void disconnectInputPorts() throws JJackException {
+		disconnectInputPorts(0, portsIn);
+	}
+
+	/**
+	 * disconnects all output ports
+	 * 
+	 * @throws JJackException
+	 */
+	public void disconnectOutputPorts() throws JJackException {
+		disconnectOutputPorts(0, portsOut);
+	}
+
+	/**
+	 * disconnects a range of input ports
+	 * 
+	 * @param port first port to be disconnected
+	 * @param range number of ports to be disconnected
+	 * @throws JJackException
+	 */
+	public void disconnectInputPorts(int port, int range) throws JJackException {
 		if (infPointer!=0) {
-			startClient(infPointer, sourceTarget, sinkTarget);
+			disconnectInputPorts(infPointer, port, range);
+		} else {
+			throw new JJackException("native client invalid");
+		}
+	}
+
+	/**
+	 * disconnects a range of output ports
+	 * 
+	 * @param port first port to be disconnected
+	 * @param range number of ports to be disconnected
+	 * @throws JJackException
+	 */
+	public void disconnectOutputPorts(int port, int range) throws JJackException {
+		if (infPointer!=0) {
+			disconnectOutputPorts(infPointer, port, range);
 		} else {
 			throw new JJackException("native client invalid");
 		}
@@ -142,7 +232,10 @@ public class JJackNativeClient {
 	// only private stuff after this point
 
 	private native long openClient(String clientName, int portsIn, int portsOut, boolean isDaemon) throws JJackException;
-	private native void startClient(long infPtr, String sourceTarget, String sinkTarget) throws JJackException;
+	private native void connectInputPorts(long infPtr, int port, int range, String target) throws JJackException;
+	private native void connectOutputPorts(long infPtr, int port, int range, String target) throws JJackException;
+	private native void disconnectInputPorts(long infPtr, int port, int range) throws JJackException;
+	private native void disconnectOutputPorts(long infPtr, int port, int range) throws JJackException;
 	private native void closeClient(long infPtr);
 
 	/**

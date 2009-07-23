@@ -152,7 +152,8 @@ public class JJackSystem implements JJackConstants {
 					}
 				}
 			}, false);
-			nativeClient.start(portsInputAutoconnect ? "" : portsInputTarget, portsOutputAutoconnect ? "" : portsOutputTarget);
+			nativeClient.connectInputPorts(portsInputAutoconnect ? "" : portsInputTarget);
+			nativeClient.connectOutputPorts(portsOutputAutoconnect ? "" : portsOutputTarget);
 		} catch(JJackException e) {
 			if (nativeClient!=null) {
 				nativeClient.close();

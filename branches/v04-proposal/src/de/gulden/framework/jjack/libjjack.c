@@ -121,8 +121,7 @@ int process(jack_nframes_t nframes, void *arg) {
       if (tempSampleBuffer!=inf->sampleBuffers[mode][i]) {
         reallocated = JNI_TRUE;
         inf->sampleBuffers[mode][i] = tempSampleBuffer;
-        jobject byteBuffer = (*env)->NewDirectByteBuffer(env,
-                  tempSampleBuffer,
+        jobject byteBuffer = (*env)->NewDirectByteBuffer(env, tempSampleBuffer,
                     (jsize)(nframes*sizeof(jack_default_audio_sample_t)));
         (*env)->SetObjectArrayElement(env, inf->byteBufferArray[mode],
                   (jsize) i, byteBuffer);
@@ -237,17 +236,6 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *jvm, void *reserved) {
  * private native long openClient(String, int, int) throws JJackException
  */
 JNIEXPORT jlong JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_openClient(JNIEnv *env, jobject obj, jstring clientName, jint portsIn, jint portsOut, jboolean isDaemon) {
-  INF inf = (INF) malloc(sizeof(struct Inf));
-  const char *name;
-  jack_client_t *client;
-  char *portName;
-  int mode, i;
-
-  if (inf==NULL) {
-      throwExc(env, "can't allocate memory");
-      return 0;
-  }
-
   if (processCallback==NULL) { // first call?
     jclass cls = (*env)->GetObjectClass(env, obj);
     jmethodID mid = (*env)->GetMethodID(env, cls,
@@ -267,31 +255,32 @@ JNIEXPORT jlong JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_openCli
     shutdownCallback = mid;  // no global ref necessary
   }
 
+  INF inf = (INF) malloc(sizeof(struct Inf));
+  if (inf==NULL) {
+    throwExc(env, "can't allocate memory");
+    return 0;
+  }
   inf->owner = (*env)->NewWeakGlobalRef(env, obj);
   inf->isDaemon = (isDaemon==JNI_TRUE);
 
-  name = allocchars(env, clientName);
-  fprintf(stderr, "natively opening jack client \"%s\"\n", name);
-
-  client = jack_client_open(name, JackNullOption, NULL);
+  char *name = allocchars(env, clientName);
+  fprintf(stderr, "opening jack client \"%s\"\n", name);
+  jack_client_t *client = jack_client_open(name, JackNullOption, NULL);
   freechars(env, clientName, name);
+  inf->client = client;
+  inf->byteBufferArray[INPUT] = inf->byteBufferArray[OUTPUT] = NULL;
   if (client==0) {
     throwExc(env, "can't open client, jack server not running?");
+    closeClient(env, obj, inf);
     return 0;
   }
-  inf->client = client;
-
   jack_set_process_callback(client, process, inf);
   jack_on_shutdown(client, shutdown, inf);
 
-  portName = malloc(100);
+  int mode, i;
+  char *portName = malloc(100);
   for (mode=INPUT; mode<=OUTPUT; mode++) {
-    int portCount = (mode==INPUT) ? portsIn : portsOut;
-    if (portCount > MAX_PORTS) {
-      portCount = MAX_PORTS;
-    }
-    inf->portCount[mode] = portCount;
-
+    inf->portCount[mode] = (mode==INPUT) ? portsIn : portsOut;
     inf->byteBufferArray[mode] = (*env)->NewGlobalRef(env,
                 (*env)->NewObjectArray(env,
                     (jsize)inf->portCount[mode], cls_ByteBuffer, NULL));
@@ -303,79 +292,138 @@ JNIEXPORT jlong JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_openCli
     }
   }
   free(portName);
+
+  if (jack_activate(inf->client)) {
+    throwExc(env, "cannot activate client");
+    closeClient(env, obj, inf);
+    return 0;
+  }
+
   fprintf(stderr, "using %i input ports, %i output ports\n",
                       inf->portCount[INPUT], inf->portCount[OUTPUT]);
 
   return (jlong) inf;
 }
 
-/*
- * private void startClient(String, String) throws JJackException
- *
- * sourceTarget==null: no autoconnect
- * sourceTarget=="":   autoconnect to physical ports
- * sourceTarget==name: autoconnect to ports of named client
- */
-JNIEXPORT void JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_startClient(JNIEnv *env, jobject obj, jlong infPtr, jstring sourceTarget, jstring sinkTarget) {
-  INF inf = (INF) infPtr;
-  const char **ports;
-  int mode, i;
+void connectPorts(JNIEnv *env, jobject obj, jlong infPtr, jint port, jint range, jstring target, int mode) {
+  if (target==NULL) return;
+  fprintf(stderr, "connecting %s ports\n", MODE_LABEL[mode]);
 
-  if (jack_activate(inf->client)) {
-    throwExc(env, "cannot activate client");
+  INF inf = (INF) infPtr;
+  if (port<0 || port+range>inf->portCount[mode]) {
+    throwExc(env, "ports out of range");
     return;
   }
 
-  /* autoconnect ports if requested (can't do this before client is activated)*/
-  for (mode=INPUT; mode<=OUTPUT; mode++) {
-    jstring target = (mode==INPUT) ? sourceTarget : sinkTarget;
-    if (target!=NULL) {
-      char *targetPort = allocchars(env, target);
-      int portFlags = (*targetPort) ? 0 : JackPortIsPhysical;
-      fprintf(stderr, "autoconnecting %s ports\n", MODE_LABEL[mode]);
-      ports = jack_get_ports(inf->client, targetPort, NULL,
-                    portFlags|MODE_JACK[ 1 - mode ]);
-      freechars(env, target, targetPort);
-      if (ports == NULL) {
-          /* (1-mode as we connect outputs to inputs and inputs to outputs) */
-        throwExc2(env, "Cannot find ports to autoconnect to", MODE_LABEL[mode]);
-        return;
-      }
+  char *targetPort = allocchars(env, target);
+  int portFlags = (*targetPort) ? 0 : JackPortIsPhysical;
+  char **ports = jack_get_ports(inf->client, targetPort,
+                        NULL, portFlags|MODE_JACK[1-mode]);
+  freechars(env, target, targetPort);
 
-      for (i=0; i<inf->portCount[mode]; i++) {
-        fprintf(stderr, "%s %i\n", MODE_LABEL[mode], (i+1));
-        /* will fail if more ports are requested than available */
-        if (mode==INPUT) {
-          if (jack_connect(inf->client, ports[i],
-              jack_port_name(inf->port[mode][i]))) {
-            throwExc(env, "cannot autoconnect input port");
-            return;
-          }
-        } else { // mode == OUTPUT
-          if (jack_connect(inf->client,
-                    jack_port_name(inf->port[mode][i]), ports[i])) {
-            throwExc(env, "cannot autoconnect output port");
-            return;
-          }
-        }
+  if (ports == NULL) {
+    throwExc2(env, "cannot find ports to autoconnect to", MODE_LABEL[mode]);
+    return;
+  }
+
+  int i;
+  for (i=0; i<range; i++) {
+    fprintf(stderr, "%s %i\n", MODE_LABEL[mode], (port+i+1));
+    if (ports[i]==NULL) {
+      throwExc(env, "not enough ports to autoconnect to");
+      break;
+    }
+    if (mode==INPUT) {
+      if (jack_connect(inf->client, ports[i],
+                    jack_port_name(inf->port[mode][port+i]))) {
+        throwExc(env, "cannot autoconnect input port");
+        break;
       }
-      free (ports);
+    }
+    else { // mode == OUTPUT
+      if (jack_connect(inf->client,
+                jack_port_name(inf->port[mode][port+i]), ports[i])) {
+        throwExc(env, "cannot autoconnect output port");
+        break;
+      }
     }
   }
+  free (ports);
+}
+
+/*
+ * private void connectInputPorts(long, int, int, String) throws JJackException
+ *
+ * target==NULL: no autoconnect
+ * target=="":   autoconnect to physical ports
+ * target==name: autoconnect to ports of named client
+ */
+JNIEXPORT void JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_connectInputPorts(JNIEnv *env, jobject obj, jlong infPtr, jint port, jint range, jstring target) {
+  connectPorts(env, obj, infPtr, port, range, target, INPUT);
+}
+
+/*
+ * private void connectOutputPorts(long, int, int, String) throws JJackException
+ *
+ * target==NULL: no autoconnect
+ * target=="":   autoconnect to physical ports
+ * target==name: autoconnect to ports of named client
+ */
+JNIEXPORT void JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_connectOutputPorts(JNIEnv *env, jobject obj, jlong infPtr, jint port, jint range, jstring target) {
+  connectPorts(env, obj, infPtr, port, range, target, OUTPUT);
+}
+
+void disconnectPorts(JNIEnv *env, jobject obj, jlong infPtr, jint port, jint range, int mode) {
+  fprintf(stderr, "port %d, range %d\n", port, range);
+  INF inf = (INF) infPtr;
+  if (port<0 || port+range>inf->portCount[mode]) {
+    throwExc(env, "ports out of range");
+    return;
+  }
+
+  int i;
+  for(i=port; i<port+range; i++) {
+    fprintf(stderr, "disconnecting %s port %d\n", MODE_LABEL[mode], i+1);
+    if (jack_port_disconnect(inf->client, inf->port[mode][i])) {
+      throwExc(env, "unable to disconnect port");
+      return;
+    }
+  }
+}
+
+/*
+ * private void disconnectInputPorts(long, int, int) throws JJackException
+ */
+JNIEXPORT void JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_disconnectInputPorts(JNIEnv *env, jobject obj, jlong infPtr, jint port, jint range) {
+  disconnectPorts(env, obj, infPtr, port, range, INPUT);
+}
+
+/*
+ * private void disconnectOutputPorts(long, int, int) throws JJackException
+ */
+JNIEXPORT void JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_disconnectOutputPorts(JNIEnv *env, jobject obj, jlong infPtr, jint port, jint range) {
+  disconnectPorts(env, obj, infPtr, port, range, OUTPUT);
 }
 
 /*
  * private void closeClient(long)
  */
 JNIEXPORT void JNICALL Java_de_gulden_framework_jjack_JJackNativeClient_closeClient(JNIEnv *env, jobject obj, jlong infPtr) {
-  INF inf = (INF) infPtr;
-  if (inf!=0 && inf->client!=NULL) {
-    jack_client_close(inf->client);
-    (*env)->DeleteGlobalRef(env, inf->byteBufferArray[INPUT]);
-    (*env)->DeleteGlobalRef(env, inf->byteBufferArray[OUTPUT]);
+  closeClient(env, obj, (INF) infPtr);
+}
+
+void closeClient(JNIEnv *env, jobject obj, INF inf) {
+  if (inf!=0) {
+    if (inf->client!=NULL) {
+      jack_client_close(inf->client);
+      if (inf->byteBufferArray[INPUT]!=NULL) {
+        (*env)->DeleteGlobalRef(env, inf->byteBufferArray[INPUT]);
+        (*env)->DeleteGlobalRef(env, inf->byteBufferArray[OUTPUT]);
+      }
+    }
     (*env)->DeleteWeakGlobalRef(env, inf->owner);
+    free(inf);
   }
-  free(inf);
 }
 
 /*
