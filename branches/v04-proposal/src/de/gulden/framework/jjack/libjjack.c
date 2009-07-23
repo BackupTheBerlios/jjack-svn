@@ -27,6 +27,7 @@
  * 2009-05-13 (PB):  - Got rid of some static calls
  * 2009-05-13 (PB):  - added shutdown callback
  * 2009-05-19 (PB):  - support for further streamlining of Java callback
+ * 2009-07-23 (PB):  - support for arbitrary (dis)connection of ports
  * 
  * Possible compile commands:
  *
