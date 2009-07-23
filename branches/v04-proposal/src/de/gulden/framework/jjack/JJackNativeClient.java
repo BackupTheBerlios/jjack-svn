@@ -75,20 +75,20 @@ public class JJackNativeClient {
 	 * connects all input ports to ports specified by target
 	 * 
 	 * @param target regular expression specifying target ports
-	 * @throws JJackException if the number of input ports exceeds the number of output ports matching target
+	 * @return number of connections made
 	 */
-	public void connectInputPorts(String target) throws JJackException {
-		connectInputPorts(0, portsIn, target);
+	public int connectInputPorts(String target) {
+		return connectInputPorts(0, portsIn, target);
 	}
 
 	/**
 	 * connects all output ports to ports specified by target
 	 * 
 	 * @param target regular expression specifying target ports
-	 * @throws JJackException if the number of output ports exceeds the number of ports matching target
+	 * @return number of connections made
 	 */
-	public void connectOutputPorts(String target) throws JJackException {
-		connectOutputPorts(0, portsOut, target);
+	public int connectOutputPorts(String target) {
+		return connectOutputPorts(0, portsOut, target);
 	}
 
 	/**
@@ -97,14 +97,12 @@ public class JJackNativeClient {
 	 * @param port first port to be connected
 	 * @param range number of ports to be connected
 	 * @param target regular expression specifying target ports
-	 * @throws JJackException if range exceeds number of ports matching target
+	 * @return number of connections made
 	 */
-	public void connectInputPorts(int port, int range, String target) throws JJackException {
-		if (infPointer!=0) {
-			connectInputPorts(infPointer, port, range, target);
-		} else {
-			throw new JJackException("native client invalid");
-		}
+	public int connectInputPorts(int port, int range, String target) {
+		if (infPointer==0) throw new IllegalStateException("native client invalid");
+		if (port<0 || port+range>portsIn) throw new IllegalArgumentException("ports out of range");
+		return connectInputPorts(infPointer, port, range, target);
 	}
 
 	/**
@@ -113,32 +111,30 @@ public class JJackNativeClient {
 	 * @param port first port to be connected
 	 * @param range number of ports to be connected
 	 * @param target regular expression specifying target ports
-	 * @throws JJackException if range exceeds number of ports matching target
+	 * @return number of connections made
 	 */
-	public void connectOutputPorts(int port, int range, String target) throws JJackException {
-		if (infPointer!=0) {
-			connectOutputPorts(infPointer, port, range, target);
-		} else {
-			throw new JJackException("native client invalid");
-		}
+	public int connectOutputPorts(int port, int range, String target) {
+		if (infPointer==0) throw new IllegalStateException("native client invalid");
+		if (port<0 || port+range>portsOut) throw new IllegalArgumentException("ports out of range");
+		return connectOutputPorts(infPointer, port, range, target);
 	}
 
 	/**
 	 * disconnects all input ports
 	 * 
-	 * @throws JJackException
+	 * @return number of ports disconnected
 	 */
-	public void disconnectInputPorts() throws JJackException {
-		disconnectInputPorts(0, portsIn);
+	public int disconnectInputPorts() {
+		return disconnectInputPorts(0, portsIn);
 	}
 
 	/**
 	 * disconnects all output ports
 	 * 
-	 * @throws JJackException
+	 * @return number of ports disconnected
 	 */
-	public void disconnectOutputPorts() throws JJackException {
-		disconnectOutputPorts(0, portsOut);
+	public int disconnectOutputPorts() {
+		return disconnectOutputPorts(0, portsOut);
 	}
 
 	/**
@@ -146,14 +142,12 @@ public class JJackNativeClient {
 	 * 
 	 * @param port first port to be disconnected
 	 * @param range number of ports to be disconnected
-	 * @throws JJackException
+	 * @return number of ports disconnected
 	 */
-	public void disconnectInputPorts(int port, int range) throws JJackException {
-		if (infPointer!=0) {
-			disconnectInputPorts(infPointer, port, range);
-		} else {
-			throw new JJackException("native client invalid");
-		}
+	public int disconnectInputPorts(int port, int range) {
+		if (infPointer==0) throw new IllegalStateException("native client invalid");
+		if (port<0 || port+range>portsIn) throw new IllegalArgumentException("ports out of range");
+		return disconnectInputPorts(infPointer, port, range);
 	}
 
 	/**
@@ -161,14 +155,12 @@ public class JJackNativeClient {
 	 * 
 	 * @param port first port to be disconnected
 	 * @param range number of ports to be disconnected
-	 * @throws JJackException
+	 * @return number of ports disconnected
 	 */
-	public void disconnectOutputPorts(int port, int range) throws JJackException {
-		if (infPointer!=0) {
-			disconnectOutputPorts(infPointer, port, range);
-		} else {
-			throw new JJackException("native client invalid");
-		}
+	public int disconnectOutputPorts(int port, int range) {
+		if (infPointer==0) throw new IllegalStateException("native client invalid");
+		if (port<0 || port+range>portsOut) throw new IllegalArgumentException("ports out of range");
+		return disconnectOutputPorts(infPointer, port, range);
 	}
 
 	/**
@@ -232,10 +224,10 @@ public class JJackNativeClient {
 	// only private stuff after this point
 
 	private native long openClient(String clientName, int portsIn, int portsOut, boolean isDaemon) throws JJackException;
-	private native void connectInputPorts(long infPtr, int port, int range, String target) throws JJackException;
-	private native void connectOutputPorts(long infPtr, int port, int range, String target) throws JJackException;
-	private native void disconnectInputPorts(long infPtr, int port, int range) throws JJackException;
-	private native void disconnectOutputPorts(long infPtr, int port, int range) throws JJackException;
+	private native int connectInputPorts(long infPtr, int port, int range, String target);
+	private native int connectOutputPorts(long infPtr, int port, int range, String target);
+	private native int disconnectInputPorts(long infPtr, int port, int range);
+	private native int disconnectOutputPorts(long infPtr, int port, int range);
 	private native void closeClient(long infPtr);
 
 	/**
