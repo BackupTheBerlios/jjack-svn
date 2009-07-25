@@ -322,20 +322,20 @@ int connectPorts(JNIEnv *env, jobject obj, jlong infPtr, jint port, jint range, 
   for (i=0; i<range; i++) {
     fprintf(stderr, "connecting %s %i\n", MODE_LABEL[mode], (port+i+1));
     if (ports[i]==NULL) {
-      fprintf(stderr, "not enough ports to autoconnect to");
+      fprintf(stderr, "not enough ports to autoconnect to\n");
       break;
     }
     if (mode==INPUT) {
       if (jack_connect(inf->client, ports[i],
                     jack_port_name(inf->port[mode][port+i]))) {
-        fprintf(stderr, "cannot autoconnect input port");
+        fprintf(stderr, "cannot autoconnect input port\n");
         break;
       }
     }
     else { // mode == OUTPUT
       if (jack_connect(inf->client,
                 jack_port_name(inf->port[mode][port+i]), ports[i])) {
-        fprintf(stderr, "cannot autoconnect output port");
+        fprintf(stderr, "cannot autoconnect output port\n");
         break;
       }
     }
@@ -373,7 +373,7 @@ int disconnectPorts(JNIEnv *env, jobject obj, jlong infPtr, jint port, jint rang
   for(i=port; i<port+range; i++) {
     fprintf(stderr, "disconnecting %s port %d\n", MODE_LABEL[mode], i+1);
     if (jack_port_disconnect(inf->client, inf->port[mode][i])) {
-      fprintf(stderr, "unable to disconnect port");
+      fprintf(stderr, "unable to disconnect port\n");
       break;
     }
   }

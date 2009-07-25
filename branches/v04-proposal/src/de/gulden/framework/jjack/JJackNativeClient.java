@@ -239,17 +239,17 @@ public class JJackNativeClient {
 	@SuppressWarnings("unused")
 	private void processBytes(ByteBuffer[] in, ByteBuffer[] out, boolean realloc) {
 		if (realloc) {
-			for (int i=0; i<out.length; i++) {
+			for (int i=0; i<portsOut; i++) {
 				outAsFloat[i] = out[i].order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
 			}
-			for (int i=0; i<in.length; i++) {
+			for (int i=0; i<portsIn; i++) {
 				inAsFloat[i] = in[i].order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
 			}
 		} else {
-			for(int i=0; i<out.length; i++) {
+			for(int i=0; i<portsOut; i++) {
 				outAsFloat[i].rewind();
 			}
-			for(int i=0; i<in.length; i++) {
+			for(int i=0; i<portsIn; i++) {
 				inAsFloat[i].rewind();
 			}
 		}
