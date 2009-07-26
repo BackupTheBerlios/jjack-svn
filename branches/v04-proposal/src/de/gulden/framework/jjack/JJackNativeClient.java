@@ -74,7 +74,7 @@ public class JJackNativeClient {
 	/**
 	 * connects all input ports to ports specified by target
 	 * 
-	 * @param target regular expression specifying target ports
+	 * @param target regular expression specifying target ports; "" means physical ports, and null means no connection
 	 * @return number of connections made
 	 */
 	public int connectInputPorts(String target) {
@@ -84,7 +84,7 @@ public class JJackNativeClient {
 	/**
 	 * connects all output ports to ports specified by target
 	 * 
-	 * @param target regular expression specifying target ports
+	 * @param target regular expression specifying target ports; "" means physical ports, and null means no connection
 	 * @return number of connections made
 	 */
 	public int connectOutputPorts(String target) {
@@ -96,7 +96,7 @@ public class JJackNativeClient {
 	 * 
 	 * @param port first port to be connected
 	 * @param range number of ports to be connected
-	 * @param target regular expression specifying target ports
+	 * @param target regular expression specifying target ports; "" means physical ports, and null means no connection
 	 * @return number of connections made
 	 */
 	public int connectInputPorts(int port, int range, String target) {
@@ -110,7 +110,7 @@ public class JJackNativeClient {
 	 * 
 	 * @param port first port to be connected
 	 * @param range number of ports to be connected
-	 * @param target regular expression specifying target ports
+	 * @param target regular expression specifying target ports; "" means physical ports, and null means no connection
 	 * @return number of connections made
 	 */
 	public int connectOutputPorts(int port, int range, String target) {
